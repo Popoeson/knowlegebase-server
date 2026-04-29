@@ -3,6 +3,9 @@ const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
 
+// Route imports
+const authRoutes = require("./routes/auth.routes");
+
 const app = express();
 
 // Connect to MongoDB
@@ -21,7 +24,8 @@ app.get("/", (req, res) => {
     res.json({ message: "KNOWLEDGEBASE API is running" });
 });
 
-// Routes will be added here as we build each slice
+// Routes
+app.use("/api/auth", authRoutes);
 
 // 404 handler
 app.use((req, res) => {
