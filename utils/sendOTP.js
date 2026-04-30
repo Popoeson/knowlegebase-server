@@ -1,22 +1,53 @@
-const Brevo = require("@getbrevo/brevo");
-
-const client = Brevo.ApiClient.instance;
-const apiKey = client.authentications["api-key"];
-apiKey.apiKey = process.env.BREVO_API_KEY;
-
-const transactionalApi = new Brevo.TransactionalEmailsApi();
+const https = require("https");
 
 const generateOTP = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-const sendOTP = async (email, fullName, otp) => {
-    const sendSmtpEmail = new Brevo.SendSmtpEmail();
+const sendEmail = (to, toName, subject, htmlContent) => {
+    return new Promise((resolve, reject) => {
+        const payload = JSON.stringify({
+            sender: {
+                email: process.env.EMAIL_USER,
+                name: "KNOWLEDGEBASE"
+            },
+            to: [{ email: to, name: toName }],
+            subject,
+            htmlContent
+        });
 
-    sendSmtpEmail.to = [{ email, name: fullName }];
-    sendSmtpEmail.sender = { email: process.env.EMAIL_USER, name: "KNOWLEDGEBASE" };
-    sendSmtpEmail.subject = "Verify Your Email — KNOWLEDGEBASE";
-    sendSmtpEmail.htmlContent = `
+        const options = {
+            hostname: "api.brevo.com",
+            path: "/v3/smtp/email",
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "api-key": process.env.BREVO_API_KEY,
+                "Content-Length": Buffer.byteLength(payload)
+            }
+        };
+
+        const req = https.request(options, (res) => {
+            let data = "";
+            res.on("data", (chunk) => { data += chunk; });
+            res.on("end", () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    resolve(data);
+                } else {
+                    reject(new Error(`Brevo API error: ${res.statusCode} — ${data}`));
+                }
+            });
+        });
+
+        req.on("error", reject);
+        req.write(payload);
+        req.end();
+    });
+};
+
+const sendOTP = async (email, fullName, otp) => {
+    const subject = "Verify Your Email — KNOWLEDGEBASE";
+    const htmlContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background-color: #F8F9FB;">
             
             <div style="text-align: center; margin-bottom: 32px;">
@@ -59,16 +90,12 @@ const sendOTP = async (email, fullName, otp) => {
         </div>
     `;
 
-    await transactionalApi.sendTransacEmail(sendSmtpEmail);
+    await sendEmail(email, fullName, subject, htmlContent);
 };
 
 const sendPasswordResetOTP = async (email, fullName, otp) => {
-    const sendSmtpEmail = new Brevo.SendSmtpEmail();
-
-    sendSmtpEmail.to = [{ email, name: fullName }];
-    sendSmtpEmail.sender = { email: process.env.EMAIL_USER, name: "KNOWLEDGEBASE" };
-    sendSmtpEmail.subject = "Password Reset OTP — KNOWLEDGEBASE";
-    sendSmtpEmail.htmlContent = `
+    const subject = "Password Reset OTP — KNOWLEDGEBASE";
+    const htmlContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background-color: #F8F9FB;">
             
             <div style="text-align: center; margin-bottom: 32px;">
@@ -111,7 +138,7 @@ const sendPasswordResetOTP = async (email, fullName, otp) => {
         </div>
     `;
 
-    await transactionalApi.sendTransacEmail(sendSmtpEmail);
+    await sendEmail(email, fullName, subject, htmlContent);
 };
 
 module.exports = { generateOTP, sendOTP, sendPasswordResetOTP };
