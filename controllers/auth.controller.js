@@ -7,32 +7,26 @@ const register = async (req, res) => {
     try {
         const { firstName, otherName, surname, email, password, confirmPassword } = req.body;
 
-        // Validate required fields
         if (!firstName || !surname || !email || !password || !confirmPassword) {
             return res.status(400).json({ message: "All required fields must be filled" });
         }
 
-        // Check passwords match
         if (password !== confirmPassword) {
             return res.status(400).json({ message: "Passwords do not match" });
         }
 
-        // Check password length
         if (password.length < 6) {
             return res.status(400).json({ message: "Password must be at least 6 characters" });
         }
 
-        // Check if email already exists
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(400).json({ message: "An account with this email already exists" });
         }
 
-        // Generate OTP
         const otp = generateOTP();
-        const otpExpires = new Date(Date.now() + Number(process.env.OTP_EXPIRES_IN));
+        const otpExpires = new Date(Date.now() + (Number(process.env.OTP_EXPIRES_IN) || 600000));
 
-        // Create user
         const user = await User.create({
             firstName,
             otherName: otherName || "",
@@ -43,15 +37,13 @@ const register = async (req, res) => {
             otpExpires
         });
 
-      // Send OTP email
         try {
             await sendOTP(email, user.fullName, otp);
         } catch (emailError) {
             console.error("Email error:", emailError);
-            // Delete the user so they can try again
             await User.deleteOne({ email });
-            return res.status(500).json({ 
-                message: "Account created but we could not send your OTP. Please try again." 
+            return res.status(500).json({
+                message: "Account created but we could not send your OTP. Please try again."
             });
         }
 
@@ -64,6 +56,7 @@ const register = async (req, res) => {
         console.error("Register error:", error);
         res.status(500).json({ message: "Registration failed. Please try again." });
     }
+};
 
 // ── VERIFY OTP ──
 const verifyOTP = async (req, res) => {
@@ -91,7 +84,6 @@ const verifyOTP = async (req, res) => {
             return res.status(400).json({ message: "OTP has expired. Please request a new one." });
         }
 
-        // Mark as verified and clear OTP
         user.isVerified = true;
         user.otp = null;
         user.otpExpires = null;
@@ -123,9 +115,8 @@ const resendOTP = async (req, res) => {
             return res.status(400).json({ message: "Account is already verified" });
         }
 
-        // Generate new OTP
         const otp = generateOTP();
-        const otpExpires = new Date(Date.now() + Number(process.env.OTP_EXPIRES_IN));
+        const otpExpires = new Date(Date.now() + (Number(process.env.OTP_EXPIRES_IN) || 600000));
 
         user.otp = otp;
         user.otpExpires = otpExpires;
@@ -156,7 +147,7 @@ const login = async (req, res) => {
         }
 
         if (!user.isVerified) {
-            return res.status(401).json({ 
+            return res.status(401).json({
                 message: "Please verify your email before logging in.",
                 needsVerification: true,
                 email
@@ -200,15 +191,14 @@ const forgotPassword = async (req, res) => {
 
         const user = await User.findOne({ email });
 
-        // Always return success to prevent email enumeration
         if (!user) {
-            return res.status(200).json({ 
-                message: "If an account exists with this email, an OTP has been sent." 
+            return res.status(200).json({
+                message: "If an account exists with this email, an OTP has been sent."
             });
         }
 
         const otp = generateOTP();
-        const otpExpires = new Date(Date.now() + Number(process.env.OTP_EXPIRES_IN));
+        const otpExpires = new Date(Date.now() + (Number(process.env.OTP_EXPIRES_IN) || 600000));
 
         user.otp = otp;
         user.otpExpires = otpExpires;
@@ -216,7 +206,7 @@ const forgotPassword = async (req, res) => {
 
         await sendPasswordResetOTP(email, user.fullName, otp);
 
-        res.status(200).json({ 
+        res.status(200).json({
             message: "If an account exists with this email, an OTP has been sent.",
             email
         });
