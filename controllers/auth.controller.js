@@ -43,8 +43,17 @@ const register = async (req, res) => {
             otpExpires
         });
 
-        // Send OTP email
-        await sendOTP(email, user.fullName, otp);
+      // Send OTP email
+        try {
+            await sendOTP(email, user.fullName, otp);
+        } catch (emailError) {
+            console.error("Email error:", emailError);
+            // Delete the user so they can try again
+            await User.deleteOne({ email });
+            return res.status(500).json({ 
+                message: "Account created but we could not send your OTP. Please try again." 
+            });
+        }
 
         res.status(201).json({
             message: "Registration successful. Please check your email for your OTP.",
@@ -55,7 +64,6 @@ const register = async (req, res) => {
         console.error("Register error:", error);
         res.status(500).json({ message: "Registration failed. Please try again." });
     }
-};
 
 // ── VERIFY OTP ──
 const verifyOTP = async (req, res) => {
