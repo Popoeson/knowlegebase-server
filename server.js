@@ -6,6 +6,8 @@ const connectDB = require("./config/db");
 // Route imports
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
+const courseRoutes = require("./routes/course.routes");
+const adminRoutes = require("./routes/admin.routes");
 
 const app = express();
 
@@ -28,6 +30,8 @@ app.get("/", (req, res) => {
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
+app.use("/api/courses", courseRoutes);
+app.use("/api/admin", adminRoutes);
 
 // 404 handler
 app.use((req, res) => {
