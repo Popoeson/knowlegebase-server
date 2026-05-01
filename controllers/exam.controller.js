@@ -27,7 +27,6 @@ const startAttempt = async (req, res) => {
             return res.status(400).json({ message: "Invalid exam type" });
         }
 
-        // Verify course exists
         const course = await Course.findOne({ _id: courseId, isActive: true });
         if (!course) {
             return res.status(404).json({ message: "Course not found" });
@@ -42,17 +41,10 @@ const startAttempt = async (req, res) => {
         });
 
         if (existingAttempt) {
-            // Check if time has expired
             const elapsed = (Date.now() - existingAttempt.startedAt) / 1000;
             const timeLimit = course.timeLimit * 60;
 
             if (elapsed > timeLimit + 30) {
-                // Grace period of 30 seconds passed — auto submit
-                existingAttempt.status = "timed-out";
-                existingAttempt.submittedAt = new Date();
-                existingAttempt.timeTaken = Math.floor(elapsed);
-
-                // Score whatever was answered
                 let correct = 0;
                 existingAttempt.questions.forEach(q => {
                     const answer = existingAttempt.answers.get(q.question.toString());
@@ -63,6 +55,9 @@ const startAttempt = async (req, res) => {
                     ? Math.round((correct / existingAttempt.questions.length) * 100)
                     : 0;
 
+                existingAttempt.status = "timed-out";
+                existingAttempt.submittedAt = new Date();
+                existingAttempt.timeTaken = Math.floor(elapsed);
                 existingAttempt.score = score;
                 existingAttempt.passed = score >= course.passMark;
                 await existingAttempt.save();
@@ -73,7 +68,6 @@ const startAttempt = async (req, res) => {
                 });
             }
 
-            // Return existing attempt
             return res.status(200).json({
                 message: "Resuming existing attempt",
                 attempt: {
@@ -100,7 +94,7 @@ const startAttempt = async (req, res) => {
                 user: userId,
                 course: courseId,
                 status: "success"
-            });
+            }).sort({ createdAt: -1 });
 
             if (!payment) {
                 return res.status(403).json({
@@ -110,7 +104,6 @@ const startAttempt = async (req, res) => {
                 });
             }
 
-            // Check payment not already used for a completed attempt
             const usedAttempt = await ExamAttempt.findOne({
                 user: userId,
                 course: courseId,
@@ -128,7 +121,7 @@ const startAttempt = async (req, res) => {
             }
         }
 
-        // Fetch questions from the correct bank
+        // Fetch questions from correct bank
         const allQuestions = await Question.find({
             course: courseId,
             type,
@@ -145,21 +138,19 @@ const startAttempt = async (req, res) => {
             });
         }
 
-        // Shuffle and pick questions
         const selected = shuffleArray(allQuestions).slice(0, questionLimit);
 
         // Get payment ref if certification
         let paymentRef = null;
         if (type === "certification") {
-            const payment = await Payment.findOne({
+            const latestPayment = await Payment.findOne({
                 user: userId,
                 course: courseId,
                 status: "success"
-            });
-            paymentRef = payment.reference;
+            }).sort({ createdAt: -1 });
+            paymentRef = latestPayment ? latestPayment.reference : null;
         }
 
-        // Build attempt questions (store correct answers server-side)
         const attemptQuestions = selected.map(q => ({
             question: q._id,
             questionText: q.question,
@@ -171,7 +162,6 @@ const startAttempt = async (req, res) => {
             explanation: q.explanation
         }));
 
-        // Create attempt
         const attempt = await ExamAttempt.create({
             user: userId,
             course: courseId,
@@ -181,7 +171,6 @@ const startAttempt = async (req, res) => {
             paymentRef
         });
 
-        // Return questions WITHOUT correct answers
         res.status(201).json({
             message: "Exam started",
             attempt: {
@@ -222,7 +211,6 @@ const saveAnswer = async (req, res) => {
             return res.status(404).json({ message: "Active attempt not found" });
         }
 
-        // Validate answer
         if (!["A", "B", "C", "D"].includes(answer)) {
             return res.status(400).json({ message: "Invalid answer" });
         }
@@ -258,12 +246,10 @@ const submitAttempt = async (req, res) => {
             return res.status(404).json({ message: "Course not found" });
         }
 
-        // Backend time validation
         const elapsed = (Date.now() - attempt.startedAt) / 1000;
         const timeLimit = course.timeLimit * 60;
         const gracePeriod = 30;
 
-        // Save answers
         if (answers && typeof answers === "object") {
             Object.entries(answers).forEach(([questionId, answer]) => {
                 if (["A", "B", "C", "D"].includes(answer)) {
@@ -272,7 +258,6 @@ const submitAttempt = async (req, res) => {
             });
         }
 
-        // Score the attempt
         let correct = 0;
         const reviewQuestions = [];
 
@@ -301,7 +286,6 @@ const submitAttempt = async (req, res) => {
 
         const passed = score >= course.passMark;
 
-        // Determine final status
         let finalStatus = "submitted";
         if (status === "timed-out" || elapsed > timeLimit + gracePeriod) {
             finalStatus = "timed-out";
@@ -426,13 +410,12 @@ const checkPaymentStatus = async (req, res) => {
             user: userId,
             course: courseId,
             status: "success"
-        });
+        }).sort({ createdAt: -1 });
 
         if (!payment) {
             return res.status(200).json({ paid: false });
         }
 
-        // Check if payment already used
         const usedAttempt = await ExamAttempt.findOne({
             user: userId,
             course: courseId,
