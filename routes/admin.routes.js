@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { protect, adminOnly } = require("../middleware/auth.middleware");
 const upload = require("../middleware/upload.middleware");
+const excelUpload = require("../middleware/excel.middleware");
 
 const {
     getDashboardStats,
@@ -84,7 +85,7 @@ router.put("/questions/:id", editQuestion);
 router.delete("/questions/:id", deleteQuestion);
 
 // @route   POST /api/admin/questions/bulk-upload
-router.post("/questions/bulk-upload", upload.single("file"), bulkUploadQuestions);
+router.post("/questions/bulk-upload", excelUpload.single("file"), bulkUploadQuestions);
 
 // @route   GET /api/admin/questions/template
 router.get("/questions/template", downloadTemplate);
