@@ -107,4 +107,47 @@ const changePassword = async (req, res) => {
     }
 };
 
+//----- DASHBOARD STATS ----:
+const getUserStats = async (req, res) => {
+    try {
+        const ExamAttempt = require("../models/ExamAttempt");
+        const Certificate = require("../models/Certificate");
+        const Course = require("../models/Course");
+
+        const userId = req.user._id;
+
+        const totalExams = await ExamAttempt.countDocuments({
+            user: userId,
+            status: { $in: ["submitted", "timed-out"] }
+        });
+
+        const passedExams = await ExamAttempt.countDocuments({
+            user: userId,
+            status: { $in: ["submitted", "timed-out"] },
+            passed: true
+        });
+
+        const totalCertificates = await Certificate.countDocuments({
+            user: userId,
+            status: "active"
+        }).catch(() => 0);
+
+        const totalCourses = await Course.countDocuments({ isActive: true });
+
+        res.status(200).json({
+            stats: {
+                totalExams,
+                passedExams,
+                totalCertificates,
+                totalCourses
+            }
+        });
+
+    } catch (error) {
+        console.error("Get user stats error:", error);
+        res.status(500).json({ message: "Failed to get stats." });
+    }
+};
+
+
 module.exports = { getProfile, updateProfile, changePassword };
