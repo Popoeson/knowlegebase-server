@@ -97,4 +97,8 @@ router.post("/questions/bulk-upload", excelUpload.single("file"), bulkUploadQues
 // @route   GET /api/admin/questions/template
 router.get("/questions/template", downloadTemplate);
 
+// ── TRANSACTIONS ──
+// @route   GET /api/admin/transactions
+router.get("/transactions", getAllTransactions);
+
 module.exports = router;
