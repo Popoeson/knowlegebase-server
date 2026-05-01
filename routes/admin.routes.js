@@ -5,6 +5,13 @@ const upload = require("../middleware/upload.middleware");
 const excelUpload = require("../middleware/excel.middleware");
 
 const {
+    initializePayment,
+    verifyPayment,
+    getUserTransactions,
+    getAllTransactions
+} = require("../controllers/payment.controller");
+
+const {
     getDashboardStats,
     getUsers,
     deleteUser,
