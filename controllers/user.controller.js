@@ -130,7 +130,7 @@ const getUserStats = async (req, res) => {
         const totalCertificates = await Certificate.countDocuments({
             user: userId,
             status: "active"
-        }).catch(() => 0);
+        });
 
         const totalCourses = await Course.countDocuments({ isActive: true });
 
@@ -148,6 +148,5 @@ const getUserStats = async (req, res) => {
         res.status(500).json({ message: "Failed to get stats." });
     }
 };
-
 
 module.exports = { getProfile, updateProfile, changePassword, getUserStats };
