@@ -30,6 +30,11 @@ const {
 
 const { getAllTransactions } = require("../controllers/payment.controller");
 
+const {
+    getAllCertificates,
+    revokeCertificate
+} = require("../controllers/certificate.controller");
+
 // All admin routes are protected
 router.use(protect, adminOnly);
 
@@ -63,5 +68,9 @@ router.get("/questions/template", downloadTemplate);
 
 // ── TRANSACTIONS ──
 router.get("/transactions", getAllTransactions);
+
+// ── CERTIFICATES ──
+router.get("/certificates", getAllCertificates);
+router.patch("/certificates/:id/revoke", revokeCertificate);
 
 module.exports = router;
