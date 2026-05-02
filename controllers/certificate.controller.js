@@ -17,163 +17,325 @@ const generateCertificateId = () => {
 };
 
 // ── GENERATE PDF ──
-const generateCertificatePDF = (user, course, certificate) => {
-    return new Promise((resolve, reject) => {
-        const doc = new PDFDocument({
-            layout: "landscape",
-            size: "A4",
-            margin: 0
-        });
+const generateCertificatePDF = async (user, course, certificate) => {
+    const chromium = require("@sparticuz/chromium");
+    const puppeteer = require("puppeteer-core");
 
-        const chunks = [];
-        doc.on("data", chunk => chunks.push(chunk));
-        doc.on("end", () => resolve(Buffer.concat(chunks)));
-        doc.on("error", reject);
-
-        const width = doc.page.width;
-        const height = doc.page.height;
-
-        // ── BACKGROUND ──
-        doc.rect(0, 0, width, height).fill("#FFFDF5");
-
-        // ── OUTER GOLD BORDER ──
-        doc.rect(20, 20, width - 40, height - 40)
-            .lineWidth(4)
-            .stroke("#C9A84C");
-
-        // ── INNER GOLD BORDER ──
-        doc.rect(30, 30, width - 60, height - 60)
-            .lineWidth(1)
-            .stroke("#C9A84C");
-
-        // ── HEADER BAND ──
-        doc.rect(20, 20, width - 40, 90)
-            .fill("#1B3A6B");
-
-        // ── BRAND NAME IN HEADER ──
-        doc.font("Helvetica-Bold")
-            .fontSize(28)
-            .fillColor("#C9A84C")
-            .text("KNOWLEDGEBASE", 0, 38, { align: "center" });
-
-        // ── HEADER SUBTITLE ──
-        doc.font("Helvetica")
-            .fontSize(11)
-            .fillColor("#FFFFFF")
-            .text("Certification Authority", 0, 72, { align: "center" });
-
-        // ── GOLD DECORATIVE LINE UNDER HEADER ──
-        doc.moveTo(80, 115)
-            .lineTo(width - 80, 115)
-            .lineWidth(1.5)
-            .stroke("#C9A84C");
-
-        // ── CERTIFICATE OF ACHIEVEMENT ──
-        doc.font("Helvetica")
-            .fontSize(13)
-            .fillColor("#8B6914")
-            .text("C E R T I F I C A T E   O F   A C H I E V E M E N T", 0, 128, { align: "center" });
-
-        // ── THIS CERTIFIES THAT ──
-        doc.font("Helvetica")
-            .fontSize(12)
-            .fillColor("#555555")
-            .text("This certifies that", 0, 168, { align: "center" });
-
-        // ── USER FULL NAME ──
-        doc.font("Helvetica-Bold")
-            .fontSize(36)
-            .fillColor("#1B3A6B")
-            .text(user.fullName, 0, 192, { align: "center" });
-
-        // ── GOLD LINE UNDER NAME ──
-        const nameWidth = Math.min(user.fullName.length * 18, 400);
-        const nameX = (width - nameWidth) / 2;
-        doc.moveTo(nameX, 240)
-            .lineTo(nameX + nameWidth, 240)
-            .lineWidth(1)
-            .stroke("#C9A84C");
-
-        // ── HAS SUCCESSFULLY COMPLETED ──
-        doc.font("Helvetica")
-            .fontSize(12)
-            .fillColor("#555555")
-            .text("has successfully completed and passed the certification exam in", 0, 256, { align: "center" });
-
-        // ── COURSE NAME ──
-        doc.font("Helvetica-Bold")
-            .fontSize(20)
-            .fillColor("#1B3A6B")
-            .text(course.title, 0, 282, { align: "center" });
-
-        // ── GOLD DECORATIVE LINE ──
-        doc.moveTo(80, 325)
-            .lineTo(width - 80, 325)
-            .lineWidth(1)
-            .stroke("#C9A84C");
-
-        // ── DATE AND CERTIFICATE ID ROW ──
-        const issuedDate = new Date(certificate.issuedAt).toLocaleDateString("en-GB", {
-            day: "numeric",
-            month: "long",
-            year: "numeric"
-        });
-
-        // Left: Date
-        doc.font("Helvetica")
-            .fontSize(10)
-            .fillColor("#888888")
-            .text("DATE ISSUED", 80, 338);
-
-        doc.font("Helvetica-Bold")
-            .fontSize(12)
-            .fillColor("#2C2C2C")
-            .text(issuedDate, 80, 352);
-
-        // Center: Seal placeholder
-        doc.circle(width / 2, 352, 28)
-            .lineWidth(2)
-            .stroke("#C9A84C");
-
-        doc.font("Helvetica-Bold")
-            .fontSize(8)
-            .fillColor("#C9A84C")
-            .text("VERIFIED", width / 2 - 18, 347);
-
-        doc.font("Helvetica")
-            .fontSize(6)
-            .fillColor("#C9A84C")
-            .text("KNOWLEDGEBASE", width / 2 - 22, 357);
-
-        // Right: Certificate ID
-        doc.font("Helvetica")
-            .fontSize(10)
-            .fillColor("#888888")
-            .text("CERTIFICATE ID", width - 200, 338, { width: 120, align: "right" });
-
-        doc.font("Helvetica-Bold")
-            .fontSize(12)
-            .fillColor("#2C2C2C")
-            .text(certificate.certificateId, width - 200, 352, { width: 120, align: "right" });
-
-        // ── VERIFICATION URL ──
-        doc.font("Helvetica")
-            .fontSize(9)
-            .fillColor("#888888")
-            .text(
-                `Verify this certificate at: https://knowledgebase.vercel.app/pages/verify.html?id=${certificate.certificateId}`,
-                0, 395,
-                { align: "center" }
-            );
-
-        // ── BOTTOM GOLD LINE ──
-        doc.moveTo(20, height - 45)
-            .lineTo(width - 20, height - 45)
-            .lineWidth(3)
-            .stroke("#C9A84C");
-
-        doc.end();
+    const issuedDate = new Date(certificate.issuedAt).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "long",
+        year: "numeric"
     });
+
+    const verifyUrl = `https://knowlegebase-client.vercel.app/pages/verify.html?id=${certificate.certificateId}`;
+
+    const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+
+                body {
+                    width: 1122px;
+                    height: 794px;
+                    background-color: #FFFDF5;
+                    font-family: 'Arial', sans-serif;
+                    overflow: hidden;
+                }
+
+                .certificate {
+                    width: 1122px;
+                    height: 794px;
+                    background-color: #FFFDF5;
+                    border: 6px solid #C9A84C;
+                    position: relative;
+                    display: flex;
+                    flex-direction: column;
+                }
+
+                .inner-border {
+                    position: absolute;
+                    inset: 12px;
+                    border: 1.5px solid #C9A84C;
+                    pointer-events: none;
+                    z-index: 1;
+                }
+
+                /* HEADER */
+                .cert-header {
+                    background: linear-gradient(135deg, #1B3A6B 0%, #2A5298 100%);
+                    padding: 28px 60px;
+                    text-align: center;
+                    position: relative;
+                    flex-shrink: 0;
+                }
+
+                .cert-header::after {
+                    content: "";
+                    position: absolute;
+                    bottom: 0;
+                    left: 0;
+                    right: 0;
+                    height: 4px;
+                    background: linear-gradient(90deg, #C9A84C, #F0D080, #C9A84C);
+                }
+
+                .cert-brand {
+                    font-size: 36px;
+                    font-weight: bold;
+                    color: #C9A84C;
+                    letter-spacing: 6px;
+                    margin-bottom: 4px;
+                }
+
+                .cert-authority {
+                    font-size: 13px;
+                    color: rgba(255,255,255,0.85);
+                    letter-spacing: 4px;
+                    text-transform: uppercase;
+                }
+
+                /* BODY */
+                .cert-body {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 30px 80px;
+                    text-align: center;
+                    position: relative;
+                }
+
+                .cert-watermark {
+                    position: absolute;
+                    font-size: 160px;
+                    font-weight: bold;
+                    color: rgba(201, 168, 76, 0.05);
+                    letter-spacing: 10px;
+                    user-select: none;
+                    pointer-events: none;
+                }
+
+                .cert-achievement-title {
+                    font-size: 16px;
+                    font-weight: bold;
+                    color: #8B6914;
+                    letter-spacing: 5px;
+                    text-transform: uppercase;
+                    margin-bottom: 18px;
+                }
+
+                .cert-achievement-title::before,
+                .cert-achievement-title::after {
+                    content: " ✦ ";
+                    color: #C9A84C;
+                }
+
+                .cert-certifies {
+                    font-size: 14px;
+                    color: #666;
+                    margin-bottom: 10px;
+                }
+
+                .cert-name {
+                    font-family: 'Georgia', serif;
+                    font-size: 48px;
+                    font-weight: bold;
+                    color: #1B3A6B;
+                    margin-bottom: 6px;
+                    line-height: 1.1;
+                }
+
+                .cert-name-underline {
+                    width: 360px;
+                    height: 2px;
+                    background: linear-gradient(90deg, transparent, #C9A84C, transparent);
+                    margin: 0 auto 18px;
+                }
+
+                .cert-completed-text {
+                    font-size: 14px;
+                    color: #666;
+                    margin-bottom: 8px;
+                }
+
+                .cert-course-name {
+                    font-size: 24px;
+                    font-weight: bold;
+                    color: #1B3A6B;
+                    margin-bottom: 20px;
+                }
+
+                /* DIVIDER */
+                .cert-divider {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    width: 100%;
+                    margin: 10px 0;
+                }
+
+                .cert-divider-line {
+                    flex: 1;
+                    height: 1px;
+                    background: linear-gradient(90deg, transparent, #C9A84C, transparent);
+                }
+
+                .cert-divider-diamond {
+                    color: #C9A84C;
+                    font-size: 18px;
+                }
+
+                /* FOOTER */
+                .cert-footer {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    width: 100%;
+                    padding: 0 20px;
+                    margin-top: 14px;
+                }
+
+                .cert-footer-item {
+                    text-align: center;
+                    min-width: 160px;
+                }
+
+                .cert-footer-label {
+                    font-size: 10px;
+                    color: #999;
+                    text-transform: uppercase;
+                    letter-spacing: 2px;
+                    margin-bottom: 4px;
+                }
+
+                .cert-footer-value {
+                    font-size: 13px;
+                    font-weight: bold;
+                    color: #2C2C2C;
+                }
+
+                .cert-seal {
+                    width: 88px;
+                    height: 88px;
+                    border: 3px solid #C9A84C;
+                    border-radius: 50%;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    background: radial-gradient(circle, rgba(201,168,76,0.1), transparent);
+                }
+
+                .cert-seal-text {
+                    font-size: 8px;
+                    font-weight: bold;
+                    color: #C9A84C;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    text-align: center;
+                    line-height: 1.6;
+                }
+
+                /* BOTTOM BAND */
+                .cert-bottom-band {
+                    background: linear-gradient(90deg, #C9A84C, #F0D080, #C9A84C);
+                    padding: 10px 40px;
+                    text-align: center;
+                    flex-shrink: 0;
+                }
+
+                .cert-verify-url {
+                    font-size: 11px;
+                    color: #1B3A6B;
+                    font-weight: bold;
+                    letter-spacing: 0.5px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="certificate">
+                <div class="inner-border"></div>
+
+                <div class="cert-header">
+                    <div class="cert-brand">KNOWLEDGEBASE</div>
+                    <div class="cert-authority">Certification Authority</div>
+                </div>
+
+                <div class="cert-body">
+                    <div class="cert-watermark">KB</div>
+
+                    <div class="cert-achievement-title">
+                        Certificate of Achievement
+                    </div>
+
+                    <p class="cert-certifies">This certifies that</p>
+
+                    <h2 class="cert-name">${user.fullName}</h2>
+                    <div class="cert-name-underline"></div>
+
+                    <p class="cert-completed-text">
+                        has successfully completed and passed the certification exam in
+                    </p>
+
+                    <h3 class="cert-course-name">${course.title}</h3>
+
+                    <div class="cert-divider">
+                        <div class="cert-divider-line"></div>
+                        <div class="cert-divider-diamond">◆</div>
+                        <div class="cert-divider-line"></div>
+                    </div>
+
+                    <div class="cert-footer">
+                        <div class="cert-footer-item">
+                            <p class="cert-footer-label">Date Issued</p>
+                            <p class="cert-footer-value">${issuedDate}</p>
+                        </div>
+
+                        <div class="cert-seal">
+                            <div class="cert-seal-text">✦<br>VERIFIED<br>KNOWLEDGEBASE<br>✦</div>
+                        </div>
+
+                        <div class="cert-footer-item">
+                            <p class="cert-footer-label">Certificate ID</p>
+                            <p class="cert-footer-value">${certificate.certificateId}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cert-bottom-band">
+                    <p class="cert-verify-url">
+                        Verify at: ${verifyUrl}
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+
+    const browser = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: { width: 1122, height: 794 },
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless
+    });
+
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    const pdfBuffer = await page.pdf({
+        width: "1122px",
+        height: "794px",
+        printBackground: true,
+        pageRanges: "1"
+    });
+
+    await browser.close();
+
+    return pdfBuffer;
 };
 
 // ── GENERATE CERTIFICATE ──
