@@ -244,13 +244,15 @@ const generateCertificate = async (req, res) => {
         // Generate PDF
         const pdfBuffer = await generateCertificatePDF(user, course, certificate);
 
-        // Upload to Cloudinary
-        const uploadResult = await uploadToCloudinary(pdfBuffer, {
-            folder: "knowledgebase/certificates",
-            resource_type: "raw",
-            format: "pdf",
-            public_id: `certificate_${certificateId}`
-        });
+        // Upload to Cloudinary as public resource
+const uploadResult = await uploadToCloudinary(pdfBuffer, {
+    folder: "knowledgebase/certificates",
+    resource_type: "raw",
+    type: "upload",
+    access_mode: "public",
+    format: "pdf",
+    public_id: `certificate_${certificateId}`
+});
 
         // Save PDF URL
         certificate.pdfUrl = uploadResult.secure_url;
