@@ -10,6 +10,7 @@ const courseRoutes = require("./routes/course.routes");
 const adminRoutes = require("./routes/admin.routes");
 const examRoutes = require("./routes/exam.routes");
 const paymentRoutes = require("./routes/payment.routes");
+const certificateRoutes = require("./routes/certificate.routes");
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use("/api/courses", courseRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/exam", examRoutes);
 app.use("/api/payment", paymentRoutes);
+app.use("/api/certificates", certificateRoutes);
 
 // 404 handler
 app.use((req, res) => {
