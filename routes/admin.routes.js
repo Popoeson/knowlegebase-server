@@ -16,7 +16,10 @@ const {
     getCategories,
     createCategory,
     editCategory,
-    deleteCategory
+    deleteCategory,
+    generateQuestionsWithAI,
+    saveApprovedQuestions,
+    rejectAIQuestions
 } = require("../controllers/admin.controller");
 
 const {
@@ -65,6 +68,12 @@ router.put("/questions/:id", editQuestion);
 router.delete("/questions/:id", deleteQuestion);
 router.post("/questions/bulk-upload", excelUpload.single("file"), bulkUploadQuestions);
 router.get("/questions/template", downloadTemplate);
+
+// ── AI QUESTION GENERATION ──
+// Order matters: specific paths must come before parameterised ones
+router.post("/questions/ai-generate", generateQuestionsWithAI);
+router.post("/questions/ai-save", saveApprovedQuestions);
+router.post("/questions/ai-reject", rejectAIQuestions);
 
 // ── TRANSACTIONS ──
 router.get("/transactions", getAllTransactions);
