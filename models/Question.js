@@ -42,6 +42,11 @@ const questionSchema = new mongoose.Schema(
             enum: ["practice", "certification"],
             required: [true, "Question type is required"]
         },
+        difficulty: {
+            type: String,
+            enum: ["Beginner", "Intermediate", "Advanced"],
+            default: null
+        },
         explanation: {
             type: String,
             trim: true,
@@ -50,9 +55,29 @@ const questionSchema = new mongoose.Schema(
         isActive: {
             type: Boolean,
             default: true
+        },
+        createdByAI: {
+            type: Boolean,
+            default: false
+        },
+        isApproved: {
+            type: Boolean,
+            default: true
+        },
+        approvedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
+        },
+        approvedAt: {
+            type: Date,
+            default: null
         }
     },
     { timestamps: true }
 );
+
+// Compound index for duplicate detection scoped to a course
+questionSchema.index({ course: 1, question: 1 });
 
 module.exports = mongoose.model("Question", questionSchema);
