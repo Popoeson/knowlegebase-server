@@ -183,9 +183,9 @@ const getUserTransactions = async (req, res) => {
 const getAllTransactions = async (req, res) => {
     try {
         const payments = await Payment.find()
-            .populate("user", "fullName email")
-            .populate("course", "title price")
-            .sort({ createdAt: -1 });
+    .populate("user", "firstName otherName surname email")
+    .populate("course", "title price")
+    .sort({ createdAt: -1 });
 
         const totalRevenue = payments
             .filter(p => p.status === "success")
