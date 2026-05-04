@@ -517,7 +517,7 @@ const verifyCertificate = async (req, res) => {
 const getAllCertificates = async (req, res) => {
     try {
         const certificates = await Certificate.find()
-            .populate("user", "fullName email")
+            .populate("user", "firstName otherName surname email")
             .populate("course", "title")
             .sort({ issuedAt: -1 });
 
