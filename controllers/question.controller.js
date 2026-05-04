@@ -7,7 +7,10 @@ const getQuestions = async (req, res) => {
     try {
         const { courseId, type } = req.query;
 
-        const filter = { isActive: true };
+        // Only show approved questions in the table.
+        // AI-generated questions with isApproved: false are excluded
+        // until the admin approves them through the AI review flow.
+        const filter = { isActive: true, isApproved: true };
         if (courseId) filter.course = courseId;
         if (type) filter.type = type;
 
@@ -42,7 +45,6 @@ const addQuestion = async (req, res) => {
             return res.status(400).json({ message: "All required fields must be filled" });
         }
 
-        // Verify course exists
         const courseExists = await Course.findById(course);
         if (!courseExists) {
             return res.status(404).json({ message: "Course not found" });
@@ -144,13 +146,11 @@ const bulkUploadQuestions = async (req, res) => {
             return res.status(400).json({ message: "Please upload a file" });
         }
 
-        // Verify course exists
         const course = await Course.findById(courseId);
         if (!course) {
             return res.status(404).json({ message: "Course not found" });
         }
 
-        // Parse the uploaded file
         const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
@@ -164,7 +164,7 @@ const bulkUploadQuestions = async (req, res) => {
         const skippedRows = [];
 
         rows.forEach((row, index) => {
-            const rowNum = index + 2; // +2 because row 1 is header
+            const rowNum = index + 2;
 
             const question = String(row["question"] || "").trim();
             const optionA = String(row["option_a"] || "").trim();
@@ -174,7 +174,6 @@ const bulkUploadQuestions = async (req, res) => {
             const correctAnswer = String(row["correct_answer"] || "").trim().toUpperCase();
             const explanation = String(row["explanation"] || "").trim();
 
-            // Validate row
             if (!question || !optionA || !optionB || !optionC || !optionD) {
                 skippedRows.push(`Row ${rowNum}: Missing question or options`);
                 return;
@@ -205,7 +204,6 @@ const bulkUploadQuestions = async (req, res) => {
             });
         }
 
-        // Save all valid questions
         await Question.insertMany(validQuestions);
 
         res.status(201).json({
@@ -248,15 +246,14 @@ const downloadTemplate = async (req, res) => {
         const workbook = xlsx.utils.book_new();
         const worksheet = xlsx.utils.json_to_sheet(templateData);
 
-        // Set column widths
         worksheet["!cols"] = [
-            { wch: 50 }, // question
-            { wch: 30 }, // option_a
-            { wch: 30 }, // option_b
-            { wch: 30 }, // option_c
-            { wch: 30 }, // option_d
-            { wch: 15 }, // correct_answer
-            { wch: 50 }  // explanation
+            { wch: 50 },
+            { wch: 30 },
+            { wch: 30 },
+            { wch: 30 },
+            { wch: 30 },
+            { wch: 15 },
+            { wch: 50 }
         ];
 
         xlsx.utils.book_append_sheet(workbook, worksheet, "Questions");
