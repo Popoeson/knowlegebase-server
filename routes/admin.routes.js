@@ -69,7 +69,6 @@ router.put("/questions/:id", editQuestion);
 router.delete("/questions/:id", deleteQuestion);
 router.post("/questions/bulk-upload", excelUpload.single("file"), bulkUploadQuestions);
 router.get("/questions/template", downloadTemplate);
-// @route   DELETE /api/admin/questions/bulk-delete
 router.delete("/questions/bulk-delete", bulkDeleteQuestions);
 
 // ── AI QUESTION GENERATION ──
