@@ -4,9 +4,8 @@ const Category = require("../models/Category");
 const Question = require("../models/Question");
 const { uploadToCloudinary } = require("../config/cloudinary");
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
+const Groq = require("groq-sdk");
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // ── ADMIN DASHBOARD STATS ──
 const getDashboardStats = async (req, res) => {
@@ -290,8 +289,8 @@ const deleteCategory = async (req, res) => {
 };
 
 
-// ── AI QUESTION GENERATION (GEMINI) ──
-// Calls Gemini, runs duplicate check, returns questions for admin review.
+// ── AI QUESTION GENERATION (GROQ) ──
+// Calls Groq, runs duplicate check, returns questions for admin review.
 // Nothing is saved to the database at this stage.
 const generateQuestionsWithAI = async (req, res) => {
     try {
@@ -343,19 +342,24 @@ Rules:
 - Do not number the questions
 - Do not include any text outside the JSON array`;
 
-        // Call Gemini
+        // Call Groq
         let rawText = "";
         try {
-            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
-            const result = await model.generateContent(prompt);
-            rawText = result.response.text();
+            const completion = await groq.chat.completions.create({
+                model: "llama-3.3-70b-versatile",
+                messages: [{ role: "user", content: prompt }],
+                temperature: 0.7
+            });
+            rawText = completion.choices[0].message.content;
         } catch (err) {
-            console.error("Gemini error:", err);
+            console.error("Groq error:", err);
+            if (err.status === 429) {
+                return res.status(429).json({ message: "AI quota exceeded. Please wait a moment and try again." });
+            }
             return res.status(502).json({ message: "AI service failed. Please try again." });
         }
 
-        // Strip any markdown fences Gemini may have added despite instructions
+        // Strip any markdown fences just in case
         const cleaned = rawText
             .replace(/```json/gi, "")
             .replace(/```/g, "")
@@ -365,7 +369,7 @@ Rules:
         try {
             parsed = JSON.parse(cleaned);
         } catch (err) {
-            console.error("Failed to parse Gemini response:", rawText);
+            console.error("Failed to parse Groq response:", rawText);
             return res.status(502).json({ message: "AI returned an unexpected format. Please try again." });
         }
 
@@ -384,7 +388,7 @@ Rules:
             return res.status(502).json({ message: "AI questions failed validation. Please try again." });
         }
 
-        // Duplicate detection — check each question against existing DB entries for this course
+        // Duplicate detection
         const duplicateCheckResults = await Promise.all(
             validQuestions.map(async (q) => {
                 const exists = await Question.findOne({
@@ -404,7 +408,6 @@ Rules:
             });
         }
 
-        // Return for admin review — nothing saved yet
         res.status(200).json({
             message: `${unique.length} question${unique.length !== 1 ? "s" : ""} ready for review${duplicateCount > 0 ? `. ${duplicateCount} duplicate${duplicateCount > 1 ? "s" : ""} removed.` : "."}`,
             questions: unique,
@@ -416,7 +419,6 @@ Rules:
         res.status(500).json({ message: "Failed to generate questions. Please try again." });
     }
 };
-
 
 // ── APPROVE AND SAVE AI QUESTIONS ──
 // Admin reviews questions on the frontend, selects which to approve,
