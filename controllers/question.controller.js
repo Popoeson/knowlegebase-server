@@ -316,5 +316,6 @@ module.exports = {
     editQuestion,
     deleteQuestion,
     bulkUploadQuestions,
-    downloadTemplate
+    downloadTemplate,
+    bulkDeleteQuestions
 };
