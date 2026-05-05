@@ -270,6 +270,46 @@ const downloadTemplate = async (req, res) => {
     }
 };
 
+// ── BULK DELETE QUESTIONS (ADMIN) ──
+const bulkDeleteQuestions = async (req, res) => {
+    try {
+        const { questionIds, courseId, type } = req.body;
+
+        // Delete by specific IDs
+        if (questionIds && questionIds.length > 0) {
+            await Question.updateMany(
+                { _id: { $in: questionIds } },
+                { isActive: false }
+            );
+
+            return res.status(200).json({
+                message: `${questionIds.length} question${questionIds.length > 1 ? "s" : ""} deleted successfully`
+            });
+        }
+
+        // Delete all by course and type
+        if (courseId && type) {
+            const result = await Question.updateMany(
+                { course: courseId, type, isActive: true },
+                { isActive: false }
+            );
+
+            return res.status(200).json({
+                message: `All ${type} questions for this course deleted successfully`,
+                count: result.modifiedCount
+            });
+        }
+
+        return res.status(400).json({
+            message: "Provide either questionIds or courseId + type"
+        });
+
+    } catch (error) {
+        console.error("Bulk delete error:", error);
+        res.status(500).json({ message: "Failed to delete questions." });
+    }
+};
+
 module.exports = {
     getQuestions,
     addQuestion,
