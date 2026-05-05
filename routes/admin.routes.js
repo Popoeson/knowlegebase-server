@@ -28,7 +28,8 @@ const {
     editQuestion,
     deleteQuestion,
     bulkUploadQuestions,
-    downloadTemplate
+    downloadTemplate,
+    bulkDeleteQuestions
 } = require("../controllers/question.controller");
 
 const { getAllTransactions } = require("../controllers/payment.controller");
@@ -68,6 +69,8 @@ router.put("/questions/:id", editQuestion);
 router.delete("/questions/:id", deleteQuestion);
 router.post("/questions/bulk-upload", excelUpload.single("file"), bulkUploadQuestions);
 router.get("/questions/template", downloadTemplate);
+// @route   DELETE /api/admin/questions/bulk-delete
+router.delete("/questions/bulk-delete", bulkDeleteQuestions);
 
 // ── AI QUESTION GENERATION ──
 // Order matters: specific paths must come before parameterised ones
