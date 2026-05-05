@@ -346,7 +346,8 @@ Rules:
         // Call Gemini
         let rawText = "";
         try {
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+
             const result = await model.generateContent(prompt);
             rawText = result.response.text();
         } catch (err) {
