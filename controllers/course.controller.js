@@ -1,15 +1,22 @@
 const Course = require("../models/Course");
 const Category = require("../models/Category");
 const Question = require("../models/Question");
+const Cache = require("../utils/cache");
 
 // ── GET ALL ACTIVE COURSES (PUBLIC) ──
 const getCourses = async (req, res) => {
     try {
+        const cacheKey = "courses:all";
+        const cached = Cache.get(cacheKey);
+        if (cached) return res.status(200).json(cached);
+
         const courses = await Course.find({ isActive: true })
             .populate("category", "name")
             .sort({ createdAt: -1 });
 
-        res.status(200).json({ courses });
+        const payload = { courses };
+        Cache.set(cacheKey, payload, 600); // 10 minutes
+        res.status(200).json(payload);
 
     } catch (error) {
         console.error("Get courses error:", error);
@@ -20,6 +27,10 @@ const getCourses = async (req, res) => {
 // ── GET SINGLE COURSE (PUBLIC) ──
 const getCourse = async (req, res) => {
     try {
+        const cacheKey = `course:${req.params.id}`;
+        const cached = Cache.get(cacheKey);
+        if (cached) return res.status(200).json(cached);
+
         const course = await Course.findOne({
             _id: req.params.id,
             isActive: true
@@ -29,7 +40,6 @@ const getCourse = async (req, res) => {
             return res.status(404).json({ message: "Course not found" });
         }
 
-        // Get question counts
         const certificationCount = await Question.countDocuments({
             course: course._id,
             type: "certification",
@@ -42,13 +52,12 @@ const getCourse = async (req, res) => {
             isActive: true
         });
 
-        res.status(200).json({
+        const payload = {
             course,
-            questionCounts: {
-                certification: certificationCount,
-                practice: practiceCount
-            }
-        });
+            questionCounts: { certification: certificationCount, practice: practiceCount }
+        };
+        Cache.set(cacheKey, payload, 600); // 10 minutes
+        res.status(200).json(payload);
 
     } catch (error) {
         console.error("Get course error:", error);
@@ -59,10 +68,16 @@ const getCourse = async (req, res) => {
 // ── GET ALL CATEGORIES (PUBLIC) ──
 const getCategories = async (req, res) => {
     try {
+        const cacheKey = "categories:all";
+        const cached = Cache.get(cacheKey);
+        if (cached) return res.status(200).json(cached);
+
         const categories = await Category.find({ isActive: true })
             .sort({ name: 1 });
 
-        res.status(200).json({ categories });
+        const payload = { categories };
+        Cache.set(cacheKey, payload, 1800); // 30 minutes
+        res.status(200).json(payload);
 
     } catch (error) {
         console.error("Get categories error:", error);
