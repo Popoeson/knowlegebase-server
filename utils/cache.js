@@ -16,11 +16,16 @@ const Cache = {
     // Retrieve a value — returns null if missing or expired
     get(key) {
         const entry = store[key];
-        if (!entry) return null;
-        if (Date.now() > entry.expiresAt) {
-            delete store[key];
+        if (!entry) {
+            console.log(`[Cache MISS] ${key}`);
             return null;
         }
+        if (Date.now() > entry.expiresAt) {
+            delete store[key];
+            console.log(`[Cache EXPIRED] ${key}`);
+            return null;
+        }
+        console.log(`[Cache HIT] ${key}`);
         return entry.value;
     },
 
