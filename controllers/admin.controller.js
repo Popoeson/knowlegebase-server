@@ -29,6 +29,7 @@ const getDashboardStats = async (req, res) => {
     }
 };
 
+
 // ── GET ALL USERS ──
 const getUsers = async (req, res) => {
     try {
@@ -55,6 +56,8 @@ const deleteUser = async (req, res) => {
         }
 
         await User.findByIdAndDelete(req.params.id);
+
+        Cache.invalidate("admin:stats"); // user count changed
         res.status(200).json({ message: "User deleted successfully" });
     } catch (error) {
         console.error("Delete user error:", error);
@@ -63,7 +66,7 @@ const deleteUser = async (req, res) => {
 };
 
 
-// ── GET ALL COURSES ──
+// ── GET ALL COURSES (ADMIN) ──
 const getAllCourses = async (req, res) => {
     try {
         const cacheKey = "admin:courses:all";
@@ -127,6 +130,11 @@ const createCourse = async (req, res) => {
 
         const populated = await Course.findById(course._id).populate("category", "name");
 
+        // Invalidate course caches — new course exists
+        Cache.invalidate("courses:all");
+        Cache.invalidate("admin:courses:all");
+        Cache.invalidate("admin:stats");
+
         res.status(201).json({
             message: "Course created successfully",
             course: populated
@@ -177,6 +185,11 @@ const editCourse = async (req, res) => {
 
         const populated = await Course.findById(course._id).populate("category", "name");
 
+        // Invalidate this course and all course lists
+        Cache.invalidate("courses:all");
+        Cache.invalidate("admin:courses:all");
+        Cache.invalidate(`course:${req.params.id}`);
+
         res.status(200).json({
             message: "Course updated successfully",
             course: populated
@@ -198,6 +211,12 @@ const toggleCourseStatus = async (req, res) => {
         course.isActive = !course.isActive;
         await course.save();
 
+        // Invalidate affected caches
+        Cache.invalidate("courses:all");
+        Cache.invalidate("admin:courses:all");
+        Cache.invalidate(`course:${req.params.id}`);
+        Cache.invalidate("admin:stats");
+
         res.status(200).json({
             message: `Course ${course.isActive ? "activated" : "deactivated"} successfully`,
             isActive: course.isActive
@@ -217,6 +236,12 @@ const deleteCourse = async (req, res) => {
 
         course.isActive = false;
         await course.save();
+
+        // Invalidate affected caches
+        Cache.invalidate("courses:all");
+        Cache.invalidate("admin:courses:all");
+        Cache.invalidate(`course:${req.params.id}`);
+        Cache.invalidate("admin:stats");
 
         res.status(200).json({ message: "Course deleted successfully" });
     } catch (error) {
@@ -259,6 +284,8 @@ const createCategory = async (req, res) => {
 
         const category = await Category.create({ name });
 
+        Cache.invalidate("categories:all");
+
         res.status(201).json({ message: "Category created successfully", category });
     } catch (error) {
         console.error("Create category error:", error);
@@ -278,6 +305,8 @@ const editCategory = async (req, res) => {
 
         category.name = name;
         await category.save();
+
+        Cache.invalidate("categories:all");
 
         res.status(200).json({ message: "Category updated successfully", category });
     } catch (error) {
@@ -301,6 +330,9 @@ const deleteCategory = async (req, res) => {
         }
 
         await Category.findByIdAndDelete(req.params.id);
+
+        Cache.invalidate("categories:all");
+
         res.status(200).json({ message: "Category deleted successfully" });
     } catch (error) {
         console.error("Delete category error:", error);
@@ -310,8 +342,6 @@ const deleteCategory = async (req, res) => {
 
 
 // ── AI QUESTION GENERATION (GROQ) ──
-// Calls Groq, runs duplicate check, returns questions for admin review.
-// Nothing is saved to the database at this stage.
 const generateQuestionsWithAI = async (req, res) => {
     try {
         const { courseId, topicName, difficulty, count, type } = req.body;
@@ -370,7 +400,7 @@ STRICT QUESTION DESIGN RULES:
    - Trade-offs (e.g., performance vs accuracy)
    - Edge cases or failure scenarios
    - System/architecture-level reasoning
-   - “Best choice” instead of “only correct answer”
+   - "Best choice" instead of "only correct answer"
 
 7. Ensure at least:
    - 30% of questions involve problem-solving
@@ -398,7 +428,6 @@ STRICT OUTPUT RULES:
 - Do not number the questions
 - Do not include any text outside the JSON array`;
 
-        // Call Groq
         let rawText = "";
         try {
             const completion = await groq.chat.completions.create({
@@ -415,7 +444,6 @@ STRICT OUTPUT RULES:
             return res.status(502).json({ message: "AI service failed. Please try again." });
         }
 
-        // Strip any markdown fences just in case
         const cleaned = rawText
             .replace(/```json/gi, "")
             .replace(/```/g, "")
@@ -433,7 +461,6 @@ STRICT OUTPUT RULES:
             return res.status(502).json({ message: "AI returned no questions. Please try again." });
         }
 
-        // Validate structure of each question
         const validAnswers = ["A", "B", "C", "D"];
         const validQuestions = parsed.filter(q =>
             q.question && q.optionA && q.optionB && q.optionC && q.optionD &&
@@ -444,7 +471,6 @@ STRICT OUTPUT RULES:
             return res.status(502).json({ message: "AI questions failed validation. Please try again." });
         }
 
-        // Duplicate detection
         const duplicateCheckResults = await Promise.all(
             validQuestions.map(async (q) => {
                 const exists = await Question.findOne({
@@ -476,9 +502,8 @@ STRICT OUTPUT RULES:
     }
 };
 
+
 // ── APPROVE AND SAVE AI QUESTIONS ──
-// Admin reviews questions on the frontend, selects which to approve,
-// and this endpoint saves only the approved ones to the database.
 const saveApprovedQuestions = async (req, res) => {
     try {
         const { courseId, questions, type, difficulty } = req.body;
@@ -498,7 +523,6 @@ const saveApprovedQuestions = async (req, res) => {
         const course = await Course.findById(courseId);
         if (!course) return res.status(404).json({ message: "Course not found" });
 
-        // Run a final duplicate check before saving — guards against double submissions
         const duplicateCheckResults = await Promise.all(
             questions.map(async (q) => {
                 const exists = await Question.findOne({
@@ -537,6 +561,10 @@ const saveApprovedQuestions = async (req, res) => {
 
         const saved = await Question.insertMany(toInsert);
 
+        // Question counts changed — invalidate the affected course detail cache
+        Cache.invalidate(`course:${courseId}`);
+        Cache.invalidate("admin:stats");
+
         res.status(201).json({
             message: `${saved.length} question${saved.length !== 1 ? "s" : ""} saved successfully`,
             savedCount: saved.length
@@ -550,9 +578,6 @@ const saveApprovedQuestions = async (req, res) => {
 
 
 // ── REJECT AI QUESTIONS ──
-// Admin rejects the entire generated batch. Since nothing was saved,
-// this is a no-op on the DB — it just returns a confirmation.
-// Included as an explicit endpoint for clean frontend request handling.
 const rejectAIQuestions = async (req, res) => {
     res.status(200).json({ message: "Questions rejected. Nothing was saved." });
 };
