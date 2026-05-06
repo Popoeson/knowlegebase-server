@@ -3,6 +3,7 @@ const Course = require("../models/Course");
 const Category = require("../models/Category");
 const Question = require("../models/Question");
 const { uploadToCloudinary } = require("../config/cloudinary");
+const Cache = require("../utils/cache");
 
 const Groq = require("groq-sdk");
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -10,19 +11,23 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 // ── ADMIN DASHBOARD STATS ──
 const getDashboardStats = async (req, res) => {
     try {
+        const cacheKey = "admin:stats";
+        const cached = Cache.get(cacheKey);
+        if (cached) return res.status(200).json(cached);
+
         const totalUsers = await User.countDocuments({ role: "user" });
         const totalCourses = await Course.countDocuments({ isActive: true });
         const totalQuestions = await Question.countDocuments({ isActive: true });
 
-        res.status(200).json({
-            stats: { totalUsers, totalCourses, totalQuestions }
-        });
+        const payload = { stats: { totalUsers, totalCourses, totalQuestions } };
+        Cache.set(cacheKey, payload, 300); // 5 minutes
+        res.status(200).json(payload);
+
     } catch (error) {
         console.error("Admin dashboard error:", error);
         res.status(500).json({ message: "Failed to get dashboard stats." });
     }
 };
-
 
 // ── GET ALL USERS ──
 const getUsers = async (req, res) => {
