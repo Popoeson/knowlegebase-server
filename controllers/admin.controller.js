@@ -315,16 +315,52 @@ const generateQuestionsWithAI = async (req, res) => {
 
         const prompt = `You are an exam question writer for a professional certification platform.
 
+Your goal is to generate HIGH-QUALITY, JOB-READY assessment questions — not just theoretical or memorization-based questions.
+
 Generate exactly ${questionCount} multiple-choice questions on the topic: "${topicName}".
 Course context: ${course.title}
 Difficulty level: ${difficulty}
 
-Difficulty guidelines:
-- Beginner: foundational concepts, definitions, basic understanding
-- Intermediate: applied knowledge, problem-solving, comparisons
-- Advanced: edge cases, deep technical reasoning, architecture decisions
+STRICT QUESTION DESIGN RULES:
+
+1. All questions MUST be scenario-based or context-driven.
+   - Avoid direct definition questions like "What is X?"
+   - Frame questions as real-world situations, problems, or decisions.
+
+2. Each question must test THINKING, not memorization:
+   - Beginner → understanding + recognition in context
+   - Intermediate → application + decision-making
+   - Advanced → judgment, trade-offs, edge cases, or system design reasoning
+
+3. Distractors (wrong options) MUST be:
+   - Plausible and realistic
+   - Based on common mistakes or misconceptions
+   - Similar in length and tone to the correct answer
+   - NOT obviously wrong or unrelated
+
+4. Avoid patterns:
+   - Randomize correct answer positions (A–D)
+   - Do not repeat similar wording across questions
+
+5. Explanations must:
+   - Clearly justify WHY the correct answer is right
+   - Briefly explain WHY other options are wrong (especially for Intermediate & Advanced)
+
+6. Advanced difficulty MUST include at least one of:
+   - Trade-offs (e.g., performance vs accuracy)
+   - Edge cases or failure scenarios
+   - System/architecture-level reasoning
+   - “Best choice” instead of “only correct answer”
+
+7. Ensure at least:
+   - 30% of questions involve problem-solving
+   - 20% involve decision-making
+   - 10% include subtle traps or common misconceptions
+
+OUTPUT FORMAT:
 
 Return ONLY a pure JSON array with no markdown, no code fences, no extra text.
+
 Each object must follow this exact structure:
 {
   "question": "Question text here",
@@ -333,12 +369,12 @@ Each object must follow this exact structure:
   "optionC": "Third option",
   "optionD": "Fourth option",
   "correctAnswer": "A",
-  "explanation": "Brief explanation of why the answer is correct"
+  "explanation": "Clear and concise explanation"
 }
 
-Rules:
+STRICT OUTPUT RULES:
 - correctAnswer must be exactly one of: A, B, C, or D
-- All four options must be distinct and plausible
+- All four options must be distinct
 - Do not number the questions
 - Do not include any text outside the JSON array`;
 
