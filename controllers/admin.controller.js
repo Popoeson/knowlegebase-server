@@ -436,6 +436,7 @@ STRICT OUTPUT RULES:
                 temperature: 0.7
             });
             rawText = completion.choices[0].message.content;
+console.log("Groq raw response:", rawText); // temporary debug line
         } catch (err) {
             console.error("Groq error:", err);
             if (err.status === 429) {
