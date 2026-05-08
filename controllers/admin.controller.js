@@ -444,18 +444,30 @@ STRICT OUTPUT RULES:
             return res.status(502).json({ message: "AI service failed. Please try again." });
         }
 
-        const cleaned = rawText
-            .replace(/```json/gi, "")
-            .replace(/```/g, "")
-            .trim();
-
         let parsed;
-        try {
-            parsed = JSON.parse(cleaned);
-        } catch (err) {
-            console.error("Failed to parse Groq response:", rawText);
-            return res.status(502).json({ message: "AI returned an unexpected format. Please try again." });
-        }
+try {
+    // Strip markdown fences
+    let cleaned = rawText
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .trim();
+
+    // If Llama added text before or after the array, extract just the array
+    const arrayStart = cleaned.indexOf("[");
+    const arrayEnd = cleaned.lastIndexOf("]");
+
+    if (arrayStart === -1 || arrayEnd === -1 || arrayEnd < arrayStart) {
+        console.error("No JSON array found in Groq response:", rawText);
+        return res.status(502).json({ message: "AI returned an unexpected format. Please try again." });
+    }
+
+    cleaned = cleaned.slice(arrayStart, arrayEnd + 1);
+    parsed = JSON.parse(cleaned);
+
+} catch (err) {
+    console.error("Failed to parse Groq response:", rawText);
+    return res.status(502).json({ message: "AI returned an unexpected format. Please try again." });
+}
 
         if (!Array.isArray(parsed) || parsed.length === 0) {
             return res.status(502).json({ message: "AI returned no questions. Please try again." });
