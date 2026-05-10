@@ -499,11 +499,11 @@ STRICT OUTPUT RULES:
         // Duplicate check scoped to course AND type
         const duplicateCheckResults = await Promise.all(
             validQuestions.map(async (q) => {
-                const exists = await Question.findOne({
-                    course: courseId,
-                    type: type,
-                    question: { $regex: new RegExp(`^${q.question.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }
-                });
+           const exists = await Question.findOne({
+    course: courseId,
+    type: type,
+    question: { $regex: new RegExp(`^${q.question.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }
+});
                 return { question: q, isDuplicate: !!exists };
             })
         );
