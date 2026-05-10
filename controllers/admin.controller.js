@@ -361,7 +361,18 @@ const generateQuestionsWithAI = async (req, res) => {
         const course = await Course.findById(courseId);
         if (!course) return res.status(404).json({ message: "Course not found" });
 
-        const questionCount = Math.min(Math.max(Number(count), 1), 50);
+        const questionCount = Math.min(Math.max(Number(count), 1), 20);
+
+        const typeContext = type === "certification"
+            ? `This is a CERTIFICATION exam question. It must be challenging, precise, and unambiguous.
+- No "all of the above" or "none of the above" options
+- Questions must have one definitively correct answer
+- Test deep understanding, not surface recognition
+- Suitable for professional assessment`
+            : `This is a PRACTICE question. It should build understanding progressively.
+- Can include foundational and applied scenarios
+- Explanations should be educational and detailed
+- Suitable for learning and self-assessment`;
 
         const prompt = `You are an exam question writer for a professional certification platform.
 
@@ -370,6 +381,9 @@ Your goal is to generate HIGH-QUALITY, JOB-READY assessment questions — not ju
 Generate exactly ${questionCount} multiple-choice questions on the topic: "${topicName}".
 Course context: ${course.title}
 Difficulty level: ${difficulty}
+
+Question type context:
+${typeContext}
 
 STRICT QUESTION DESIGN RULES:
 
@@ -433,10 +447,10 @@ STRICT OUTPUT RULES:
             const completion = await groq.chat.completions.create({
                 model: "llama-3.3-70b-versatile",
                 messages: [{ role: "user", content: prompt }],
-                temperature: 0.7
+                temperature: 0.7,
+                max_tokens: 8000
             });
             rawText = completion.choices[0].message.content;
-console.log("Groq raw response:", rawText); // temporary debug line
         } catch (err) {
             console.error("Groq error:", err);
             if (err.status === 429) {
@@ -446,29 +460,27 @@ console.log("Groq raw response:", rawText); // temporary debug line
         }
 
         let parsed;
-try {
-    // Strip markdown fences
-    let cleaned = rawText
-        .replace(/```json/gi, "")
-        .replace(/```/g, "")
-        .trim();
+        try {
+            let cleaned = rawText
+                .replace(/```json/gi, "")
+                .replace(/```/g, "")
+                .trim();
 
-    // If Llama added text before or after the array, extract just the array
-    const arrayStart = cleaned.indexOf("[");
-    const arrayEnd = cleaned.lastIndexOf("]");
+            const arrayStart = cleaned.indexOf("[");
+            const arrayEnd = cleaned.lastIndexOf("]");
 
-    if (arrayStart === -1 || arrayEnd === -1 || arrayEnd < arrayStart) {
-        console.error("No JSON array found in Groq response:", rawText);
-        return res.status(502).json({ message: "AI returned an unexpected format. Please try again." });
-    }
+            if (arrayStart === -1 || arrayEnd === -1 || arrayEnd < arrayStart) {
+                console.error("No JSON array found in Groq response:", rawText);
+                return res.status(502).json({ message: "AI returned an unexpected format. Please try again." });
+            }
 
-    cleaned = cleaned.slice(arrayStart, arrayEnd + 1);
-    parsed = JSON.parse(cleaned);
+            cleaned = cleaned.slice(arrayStart, arrayEnd + 1);
+            parsed = JSON.parse(cleaned);
 
-} catch (err) {
-    console.error("Failed to parse Groq response:", rawText);
-    return res.status(502).json({ message: "AI returned an unexpected format. Please try again." });
-}
+        } catch (err) {
+            console.error("Failed to parse Groq response:", rawText);
+            return res.status(502).json({ message: "AI returned an unexpected format. Please try again." });
+        }
 
         if (!Array.isArray(parsed) || parsed.length === 0) {
             return res.status(502).json({ message: "AI returned no questions. Please try again." });
@@ -484,10 +496,12 @@ try {
             return res.status(502).json({ message: "AI questions failed validation. Please try again." });
         }
 
+        // Duplicate check scoped to course AND type
         const duplicateCheckResults = await Promise.all(
             validQuestions.map(async (q) => {
                 const exists = await Question.findOne({
                     course: courseId,
+                    type: type,
                     question: { $regex: new RegExp(`^${q.question.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }
                 });
                 return { question: q, isDuplicate: !!exists };
@@ -514,87 +528,6 @@ try {
         res.status(500).json({ message: "Failed to generate questions. Please try again." });
     }
 };
-
-
-// ── APPROVE AND SAVE AI QUESTIONS ──
-const saveApprovedQuestions = async (req, res) => {
-    try {
-        const { courseId, questions, type, difficulty } = req.body;
-
-        if (!courseId || !questions || !Array.isArray(questions) || questions.length === 0) {
-            return res.status(400).json({ message: "courseId and a non-empty questions array are required" });
-        }
-
-        if (!["practice", "certification"].includes(type)) {
-            return res.status(400).json({ message: "type must be 'practice' or 'certification'" });
-        }
-
-        if (!["Beginner", "Intermediate", "Advanced"].includes(difficulty)) {
-            return res.status(400).json({ message: "difficulty must be Beginner, Intermediate, or Advanced" });
-        }
-
-        const course = await Course.findById(courseId);
-        if (!course) return res.status(404).json({ message: "Course not found" });
-
-        const duplicateCheckResults = await Promise.all(
-            questions.map(async (q) => {
-                const exists = await Question.findOne({
-                    course: courseId,
-                    question: { $regex: new RegExp(`^${q.question.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }
-                });
-                return { question: q, isDuplicate: !!exists };
-            })
-        );
-
-        const toInsert = duplicateCheckResults
-            .filter(r => !r.isDuplicate)
-            .map(r => ({
-                course: courseId,
-                question: r.question.question.trim(),
-                optionA: r.question.optionA.trim(),
-                optionB: r.question.optionB.trim(),
-                optionC: r.question.optionC.trim(),
-                optionD: r.question.optionD.trim(),
-                correctAnswer: r.question.correctAnswer,
-                type,
-                difficulty,
-                explanation: r.question.explanation ? r.question.explanation.trim() : null,
-                isActive: true,
-                createdByAI: true,
-                isApproved: true,
-                approvedBy: req.user._id,
-                approvedAt: new Date()
-            }));
-
-        if (toInsert.length === 0) {
-            return res.status(409).json({
-                message: "All selected questions already exist in this course."
-            });
-        }
-
-        const saved = await Question.insertMany(toInsert);
-
-        // Question counts changed — invalidate the affected course detail cache
-        Cache.invalidate(`course:${courseId}`);
-        Cache.invalidate("admin:stats");
-
-        res.status(201).json({
-            message: `${saved.length} question${saved.length !== 1 ? "s" : ""} saved successfully`,
-            savedCount: saved.length
-        });
-
-    } catch (error) {
-        console.error("Save approved questions error:", error);
-        res.status(500).json({ message: "Failed to save questions. Please try again." });
-    }
-};
-
-
-// ── REJECT AI QUESTIONS ──
-const rejectAIQuestions = async (req, res) => {
-    res.status(200).json({ message: "Questions rejected. Nothing was saved." });
-};
-
 
 module.exports = {
     getDashboardStats,
