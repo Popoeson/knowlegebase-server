@@ -529,6 +529,82 @@ STRICT OUTPUT RULES:
     }
 };
 
+// ── SAVE APPROVED AI QUESTIONS ──
+const saveApprovedQuestions = async (req, res) => {
+    try {
+        const { courseId, questions, type, difficulty } = req.body;
+
+        if (!courseId || !questions || !Array.isArray(questions) || questions.length === 0) {
+            return res.status(400).json({ message: "courseId and a non-empty questions array are required" });
+        }
+
+        if (!["practice", "certification"].includes(type)) {
+            return res.status(400).json({ message: "type must be 'practice' or 'certification'" });
+        }
+
+        if (!["Beginner", "Intermediate", "Advanced"].includes(difficulty)) {
+            return res.status(400).json({ message: "difficulty must be Beginner, Intermediate, or Advanced" });
+        }
+
+        const course = await Course.findById(courseId);
+        if (!course) return res.status(404).json({ message: "Course not found" });
+
+        const duplicateCheckResults = await Promise.all(
+            questions.map(async (q) => {
+                const exists = await Question.findOne({
+                    course: courseId,
+                    type: type,
+                    question: { $regex: new RegExp(`^${q.question.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }
+                });
+                return { question: q, isDuplicate: !!exists };
+            })
+        );
+
+        const toInsert = duplicateCheckResults
+            .filter(r => !r.isDuplicate)
+            .map(r => ({
+                course: courseId,
+                question: r.question.question.trim(),
+                optionA: r.question.optionA.trim(),
+                optionB: r.question.optionB.trim(),
+                optionC: r.question.optionC.trim(),
+                optionD: r.question.optionD.trim(),
+                correctAnswer: r.question.correctAnswer,
+                type,
+                difficulty,
+                explanation: r.question.explanation ? r.question.explanation.trim() : null,
+                isActive: true,
+                createdByAI: true,
+                isApproved: true,
+                approvedBy: req.user._id,
+                approvedAt: new Date()
+            }));
+
+        if (toInsert.length === 0) {
+            return res.status(409).json({
+                message: "All selected questions already exist in this course."
+            });
+        }
+
+        const saved = await Question.insertMany(toInsert);
+
+        res.status(201).json({
+            message: `${saved.length} question${saved.length !== 1 ? "s" : ""} saved successfully`,
+            savedCount: saved.length
+        });
+
+    } catch (error) {
+        console.error("Save approved questions error:", error);
+        res.status(500).json({ message: "Failed to save questions. Please try again." });
+    }
+};
+
+
+// ── REJECT AI QUESTIONS ──
+const rejectAIQuestions = async (req, res) => {
+    res.status(200).json({ message: "Questions rejected. Nothing was saved." });
+};
+
 module.exports = {
     getDashboardStats,
     getUsers,
