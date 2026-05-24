@@ -47,8 +47,6 @@ const userSchema = new mongoose.Schema(
             type: Date,
             default: null
         },
-
-        // Profile fields (filled after registration)
         profilePhoto: {
             type: String,
             default: null
@@ -60,6 +58,14 @@ const userSchema = new mongoose.Schema(
         bio: {
             type: String,
             default: null
+        },
+        hasPaidRegistration: {
+            type: Boolean,
+            default: false
+        },
+        registrationPaymentRef: {
+            type: String,
+            default: null
         }
     },
     {
@@ -69,7 +75,6 @@ const userSchema = new mongoose.Schema(
     }
 );
 
-// Virtual: fullName
 userSchema.virtual("fullName").get(function () {
     if (this.otherName) {
         return `${this.firstName} ${this.otherName} ${this.surname}`;
@@ -77,7 +82,6 @@ userSchema.virtual("fullName").get(function () {
     return `${this.firstName} ${this.surname}`;
 });
 
-// Hash password before saving
 userSchema.pre("save", async function (next) {
     if (!this.isModified("password")) return next();
     const salt = await bcrypt.genSalt(10);
@@ -85,7 +89,6 @@ userSchema.pre("save", async function (next) {
     next();
 });
 
-// Method: compare password
 userSchema.methods.comparePassword = async function (candidatePassword) {
     return await bcrypt.compare(candidatePassword, this.password);
 };
