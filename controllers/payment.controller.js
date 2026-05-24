@@ -1,6 +1,7 @@
 const https = require("https");
 const Payment = require("../models/Payment");
 const Course = require("../models/Course");
+const User = require("../models/User");
 
 // ── HELPER: CALL PAYSTACK API ──
 const paystackRequest = (method, path, body = null) => {
@@ -29,13 +30,12 @@ const paystackRequest = (method, path, body = null) => {
         });
 
         req.on("error", reject);
-
         if (body) req.write(JSON.stringify(body));
         req.end();
     });
 };
 
-// ── INITIALIZE PAYMENT ──
+// ── INITIALIZE COURSE PAYMENT ──
 const initializePayment = async (req, res) => {
     try {
         const { courseId, amountNGN } = req.body;
@@ -50,13 +50,9 @@ const initializePayment = async (req, res) => {
             return res.status(404).json({ message: "Course not found" });
         }
 
-        // Amount in kobo (Paystack uses kobo)
         const amountKobo = Math.round(amountNGN * 100);
-
-        // Generate unique reference
         const reference = `KB-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
-        // Initialize with Paystack
         const paystackResponse = await paystackRequest("POST", "/transaction/initialize", {
             email: user.email,
             amount: amountKobo,
@@ -76,7 +72,6 @@ const initializePayment = async (req, res) => {
             });
         }
 
-        // Save pending payment
         await Payment.create({
             user: user._id,
             course: courseId,
@@ -99,7 +94,7 @@ const initializePayment = async (req, res) => {
     }
 };
 
-// ── VERIFY PAYMENT ──
+// ── VERIFY COURSE PAYMENT ──
 const verifyPayment = async (req, res) => {
     try {
         const { reference } = req.params;
@@ -108,13 +103,11 @@ const verifyPayment = async (req, res) => {
             return res.status(400).json({ message: "Payment reference is required" });
         }
 
-        // Find payment in DB
         const payment = await Payment.findOne({ reference });
         if (!payment) {
             return res.status(404).json({ message: "Payment record not found" });
         }
 
-        // Already verified
         if (payment.status === "success") {
             return res.status(200).json({
                 message: "Payment already verified",
@@ -123,7 +116,6 @@ const verifyPayment = async (req, res) => {
             });
         }
 
-        // Verify with Paystack
         const paystackResponse = await paystackRequest(
             "GET",
             `/transaction/verify/${reference}`
@@ -164,6 +156,112 @@ const verifyPayment = async (req, res) => {
     }
 };
 
+// ── INITIALIZE REGISTRATION PAYMENT ──
+const initializeRegistrationPayment = async (req, res) => {
+    try {
+        const user = req.user;
+
+        // Already paid — no need to pay again
+        if (user.hasPaidRegistration) {
+            return res.status(400).json({
+                message: "Registration fee already paid.",
+                code: "ALREADY_PAID"
+            });
+        }
+
+        const { amountNGN } = req.body;
+
+        if (!amountNGN) {
+            return res.status(400).json({ message: "Amount is required" });
+        }
+
+        const amountKobo = Math.round(amountNGN * 100);
+        const reference = `KB-REG-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+
+        const paystackResponse = await paystackRequest("POST", "/transaction/initialize", {
+            email: user.email,
+            amount: amountKobo,
+            reference,
+            metadata: {
+                userId: user._id.toString(),
+                fullName: user.fullName,
+                type: "registration"
+            },
+            channels: ["card", "bank", "ussd", "bank_transfer"]
+        });
+
+        if (!paystackResponse.status) {
+            return res.status(400).json({
+                message: paystackResponse.message || "Failed to initialize payment"
+            });
+        }
+
+        res.status(200).json({
+            message: "Registration payment initialized",
+            reference,
+            accessCode: paystackResponse.data.access_code
+        });
+
+    } catch (error) {
+        console.error("Initialize registration payment error:", error);
+        res.status(500).json({ message: "Failed to initialize payment. Please try again." });
+    }
+};
+
+// ── VERIFY REGISTRATION PAYMENT ──
+const verifyRegistrationPayment = async (req, res) => {
+    try {
+        const { reference } = req.params;
+        const user = req.user;
+
+        if (!reference) {
+            return res.status(400).json({ message: "Payment reference is required" });
+        }
+
+        // Already paid
+        if (user.hasPaidRegistration) {
+            return res.status(200).json({
+                message: "Registration already paid.",
+                code: "ALREADY_PAID"
+            });
+        }
+
+        const paystackResponse = await paystackRequest(
+            "GET",
+            `/transaction/verify/${reference}`
+        );
+
+        if (!paystackResponse.status) {
+            return res.status(400).json({
+                message: paystackResponse.message || "Verification failed"
+            });
+        }
+
+        const transaction = paystackResponse.data;
+
+        if (transaction.status === "success") {
+            // Mark user as registration-paid
+            await User.findByIdAndUpdate(user._id, {
+                hasPaidRegistration: true,
+                registrationPaymentRef: reference
+            });
+
+            return res.status(200).json({
+                message: "Registration payment verified. Welcome to KNOWLEDGEBASE!"
+            });
+        } else {
+            return res.status(400).json({
+                message: "Payment was not successful. Please try again.",
+                status: transaction.status
+            });
+        }
+
+    } catch (error) {
+        console.error("Verify registration payment error:", error);
+        res.status(500).json({ message: "Failed to verify payment. Please try again." });
+    }
+};
+
 // ── GET USER TRANSACTIONS ──
 const getUserTransactions = async (req, res) => {
     try {
@@ -183,18 +281,15 @@ const getUserTransactions = async (req, res) => {
 const getAllTransactions = async (req, res) => {
     try {
         const payments = await Payment.find()
-    .populate("user", "firstName otherName surname email")
-    .populate("course", "title price")
-    .sort({ createdAt: -1 });
+            .populate("user", "firstName otherName surname email")
+            .populate("course", "title price")
+            .sort({ createdAt: -1 });
 
         const totalRevenue = payments
             .filter(p => p.status === "success")
             .reduce((sum, p) => sum + p.amount, 0);
 
-        res.status(200).json({
-            payments,
-            totalRevenue
-        });
+        res.status(200).json({ payments, totalRevenue });
 
     } catch (error) {
         console.error("Get all transactions error:", error);
@@ -205,6 +300,8 @@ const getAllTransactions = async (req, res) => {
 module.exports = {
     initializePayment,
     verifyPayment,
+    initializeRegistrationPayment,
+    verifyRegistrationPayment,
     getUserTransactions,
     getAllTransactions
 };
