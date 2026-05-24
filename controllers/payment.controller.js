@@ -54,17 +54,18 @@ const initializePayment = async (req, res) => {
         const reference = `KB-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
         const paystackResponse = await paystackRequest("POST", "/transaction/initialize", {
-            email: user.email,
-            amount: amountKobo,
-            reference,
-            metadata: {
-                userId: user._id.toString(),
-                courseId: course._id.toString(),
-                courseTitle: course.title,
-                fullName: user.fullName
-            },
-            channels: ["card", "bank", "ussd", "bank_transfer"]
-        });
+    email: user.email,
+    amount: amountKobo,
+    reference,
+    callback_url: `${process.env.CLIENT_URL}/pages/payment-callback.html`,
+    metadata: {
+        userId: user._id.toString(),
+        courseId: course._id.toString(),
+        courseTitle: course.title,
+        fullName: user.fullName
+    },
+    channels: ["card", "bank", "ussd", "bank_transfer"]
+});
 
         if (!paystackResponse.status) {
             return res.status(400).json({
@@ -161,7 +162,6 @@ const initializeRegistrationPayment = async (req, res) => {
     try {
         const user = req.user;
 
-        // Already paid — no need to pay again
         if (user.hasPaidRegistration) {
             return res.status(400).json({
                 message: "Registration fee already paid.",
@@ -182,6 +182,7 @@ const initializeRegistrationPayment = async (req, res) => {
             email: user.email,
             amount: amountKobo,
             reference,
+            callback_url: `${process.env.CLIENT_URL}/pages/registration-payment-callback.html`,
             metadata: {
                 userId: user._id.toString(),
                 fullName: user.fullName,
@@ -199,7 +200,8 @@ const initializeRegistrationPayment = async (req, res) => {
         res.status(200).json({
             message: "Registration payment initialized",
             reference,
-            accessCode: paystackResponse.data.access_code
+            accessCode: paystackResponse.data.access_code,
+            authorizationUrl: paystackResponse.data.authorization_url
         });
 
     } catch (error) {
