@@ -9,34 +9,37 @@ const {
     resetPassword
 } = require("../controllers/auth.controller");
 
+const { protectUnpaid } = require("../middleware/auth.middleware");
+
+const {
+    initializeRegistrationPayment,
+    verifyRegistrationPayment
+} = require("../controllers/payment.controller");
+
 // @route   POST /api/auth/register
-// @desc    Register new user
-// @access  Public
 router.post("/register", register);
 
 // @route   POST /api/auth/verify-otp
-// @desc    Verify email OTP
-// @access  Public
 router.post("/verify-otp", verifyOTP);
 
 // @route   POST /api/auth/resend-otp
-// @desc    Resend OTP
-// @access  Public
 router.post("/resend-otp", resendOTP);
 
 // @route   POST /api/auth/login
-// @desc    Login user
-// @access  Public
 router.post("/login", login);
 
 // @route   POST /api/auth/forgot-password
-// @desc    Send password reset OTP
-// @access  Public
 router.post("/forgot-password", forgotPassword);
 
 // @route   POST /api/auth/reset-password
-// @desc    Reset password with OTP
-// @access  Public
 router.post("/reset-password", resetPassword);
+
+// @route   POST /api/auth/registration-payment/initialize
+// @desc    Initialize $2 registration fee — token required, payment not yet required
+// @access  Verified users only (protectUnpaid bypasses hasPaidRegistration check)
+router.post("/registration-payment/initialize", protectUnpaid, initializeRegistrationPayment);
+
+// @route   GET /api/auth/registration-payment/verify/:reference
+router.get("/registration-payment/verify/:reference", protectUnpaid, verifyRegistrationPayment);
 
 module.exports = router;
