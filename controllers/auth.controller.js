@@ -170,7 +170,8 @@ const login = async (req, res) => {
                 firstName: user.firstName,
                 email: user.email,
                 role: user.role,
-                profilePhoto: user.profilePhoto
+                profilePhoto: user.profilePhoto,
+                hasPaidRegistration: user.hasPaidRegistration
             }
         });
 
@@ -260,11 +261,38 @@ const resetPassword = async (req, res) => {
     }
 };
 
+// ── ME — Restore session silently ──
+// Called when a new tab opens and sessionStorage is empty
+// but localStorage has a persisted token
+const me = async (req, res) => {
+    try {
+        const user = req.user;
+
+        res.status(200).json({
+            token: req.headers.authorization.split(" ")[1],
+            user: {
+                id: user._id,
+                fullName: user.fullName,
+                firstName: user.firstName,
+                email: user.email,
+                role: user.role,
+                profilePhoto: user.profilePhoto,
+                hasPaidRegistration: user.hasPaidRegistration
+            }
+        });
+
+    } catch (error) {
+        console.error("Me error:", error);
+        res.status(500).json({ message: "Failed to restore session." });
+    }
+};
+
 module.exports = {
     register,
     verifyOTP,
     resendOTP,
     login,
     forgotPassword,
-    resetPassword
+    resetPassword,
+    me
 };
