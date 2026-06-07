@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
 
+// Route imports
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const courseRoutes = require("./routes/course.routes");
@@ -13,8 +14,10 @@ const certificateRoutes = require("./routes/certificate.routes");
 
 const app = express();
 
+// Connect to MongoDB
 connectDB();
 
+// Middleware
 app.use(cors({
     origin: function(origin, callback) {
         const allowed = [
@@ -22,6 +25,7 @@ app.use(cors({
             process.env.CLIENT_URL
         ].filter(Boolean);
 
+        // Allow requests with no origin (mobile apps, Postman, server-to-server)
         if (!origin || allowed.includes(origin)) {
             callback(null, true);
         } else {
@@ -31,14 +35,12 @@ app.use(cors({
     },
     credentials: true
 }));
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
+// Health check route
 app.get("/", (req, res) => {
     res.json({ message: "KNOWLEDGEBASE API is running" });
 });
 
+// Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/courses", courseRoutes);
@@ -47,10 +49,12 @@ app.use("/api/exam", examRoutes);
 app.use("/api/payment", paymentRoutes);
 app.use("/api/certificates", certificateRoutes);
 
+// 404 handler
 app.use((req, res) => {
     res.status(404).json({ message: "Route not found" });
 });
 
+// Global error handler
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).json({ message: "Something went wrong" });
