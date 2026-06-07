@@ -2,20 +2,20 @@ const express = require("express");
 const router = express.Router();
 const { protect } = require("../middleware/auth.middleware");
 const {
-    initializePayment,
-    verifyPayment,
+    initializeCertificatePayment,
+    verifyCertificatePayment,
     getUserTransactions
 } = require("../controllers/payment.controller");
 
-// @route   POST /api/payment/initialize
-// @desc    Initialize Paystack payment
+// @route   POST /api/payment/certificate/initialize
+// @desc    Initialize certificate payment after passing exam
 // @access  Private
-router.post("/initialize", protect, initializePayment);
+router.post("/certificate/initialize", protect, initializeCertificatePayment);
 
-// @route   GET /api/payment/verify/:reference
-// @desc    Verify payment after Paystack callback
+// @route   GET /api/payment/certificate/verify/:reference
+// @desc    Verify certificate payment after Paystack callback
 // @access  Private
-router.get("/verify/:reference", protect, verifyPayment);
+router.get("/certificate/verify/:reference", protect, verifyCertificatePayment);
 
 // @route   GET /api/payment/transactions
 // @desc    Get user transaction history
