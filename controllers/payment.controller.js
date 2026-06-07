@@ -2,6 +2,7 @@ const https = require("https");
 const Payment = require("../models/Payment");
 const Course = require("../models/Course");
 const User = require("../models/User");
+const ExamAttempt = require("../models/ExamAttempt");
 
 // ── HELPER: CALL PAYSTACK API ──
 const paystackRequest = (method, path, body = null) => {
@@ -35,37 +36,63 @@ const paystackRequest = (method, path, body = null) => {
     });
 };
 
-// ── INITIALIZE COURSE PAYMENT ──
-const initializePayment = async (req, res) => {
+// ── INITIALIZE CERTIFICATE PAYMENT ──
+const initializeCertificatePayment = async (req, res) => {
     try {
-        const { courseId, amountNGN } = req.body;
+        const { attemptId, amountNGN } = req.body;
         const user = req.user;
 
-        if (!courseId || !amountNGN) {
-            return res.status(400).json({ message: "Course and amount are required" });
+        if (!attemptId || !amountNGN) {
+            return res.status(400).json({ message: "Attempt ID and amount are required" });
         }
 
-        const course = await Course.findOne({ _id: courseId, isActive: true });
-        if (!course) {
-            return res.status(404).json({ message: "Course not found" });
+        // Verify the attempt belongs to this user, is certification, and passed
+        const attempt = await ExamAttempt.findOne({
+            _id: attemptId,
+            user: user._id,
+            type: "certification",
+            passed: true,
+            status: { $in: ["submitted", "timed-out"] }
+        }).populate("course", "title price");
+
+        if (!attempt) {
+            return res.status(404).json({
+                message: "No passing certification attempt found"
+            });
+        }
+
+        // Check if certificate payment already made for this attempt
+        const existingPayment = await Payment.findOne({
+            examAttempt: attemptId,
+            user: user._id,
+            type: "certificate",
+            status: "success"
+        });
+
+        if (existingPayment) {
+            return res.status(400).json({
+                message: "Certificate payment already made for this attempt.",
+                code: "ALREADY_PAID"
+            });
         }
 
         const amountKobo = Math.round(amountNGN * 100);
-        const reference = `KB-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+        const reference = `KB-CERT-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
         const paystackResponse = await paystackRequest("POST", "/transaction/initialize", {
-    email: user.email,
-    amount: amountKobo,
-    reference,
-    callback_url: `${process.env.CLIENT_URL}/pages/payment-callback.html`,
-    metadata: {
-        userId: user._id.toString(),
-        courseId: course._id.toString(),
-        courseTitle: course.title,
-        fullName: user.fullName
-    },
-    channels: ["card", "bank", "ussd", "bank_transfer"]
-});
+            email: user.email,
+            amount: amountKobo,
+            reference,
+            callback_url: `${process.env.CLIENT_URL}/pages/payment-callback.html`,
+            metadata: {
+                userId: user._id.toString(),
+                attemptId: attemptId.toString(),
+                courseTitle: attempt.course.title,
+                fullName: user.fullName,
+                type: "certificate"
+            },
+            channels: ["card", "bank", "ussd", "bank_transfer"]
+        });
 
         if (!paystackResponse.status) {
             return res.status(400).json({
@@ -73,9 +100,12 @@ const initializePayment = async (req, res) => {
             });
         }
 
+        // Save pending payment record
         await Payment.create({
             user: user._id,
-            course: courseId,
+            course: attempt.course._id,
+            examAttempt: attemptId,
+            type: "certificate",
             reference,
             amount: amountKobo,
             currency: "NGN",
@@ -83,20 +113,20 @@ const initializePayment = async (req, res) => {
         });
 
         res.status(200).json({
-            message: "Payment initialized",
+            message: "Certificate payment initialized",
             reference,
             accessCode: paystackResponse.data.access_code,
             authorizationUrl: paystackResponse.data.authorization_url
         });
 
     } catch (error) {
-        console.error("Initialize payment error:", error);
+        console.error("Initialize certificate payment error:", error);
         res.status(500).json({ message: "Failed to initialize payment. Please try again." });
     }
 };
 
-// ── VERIFY COURSE PAYMENT ──
-const verifyPayment = async (req, res) => {
+// ── VERIFY CERTIFICATE PAYMENT ──
+const verifyCertificatePayment = async (req, res) => {
     try {
         const { reference } = req.params;
 
@@ -109,11 +139,11 @@ const verifyPayment = async (req, res) => {
             return res.status(404).json({ message: "Payment record not found" });
         }
 
+        // Already verified
         if (payment.status === "success") {
             return res.status(200).json({
                 message: "Payment already verified",
-                payment,
-                courseId: payment.course
+                attemptId: payment.examAttempt
             });
         }
 
@@ -138,8 +168,7 @@ const verifyPayment = async (req, res) => {
 
             return res.status(200).json({
                 message: "Payment verified successfully",
-                payment,
-                courseId: payment.course
+                attemptId: payment.examAttempt
             });
         } else {
             payment.status = "failed";
@@ -152,7 +181,7 @@ const verifyPayment = async (req, res) => {
         }
 
     } catch (error) {
-        console.error("Verify payment error:", error);
+        console.error("Verify certificate payment error:", error);
         res.status(500).json({ message: "Failed to verify payment. Please try again." });
     }
 };
@@ -220,7 +249,6 @@ const verifyRegistrationPayment = async (req, res) => {
             return res.status(400).json({ message: "Payment reference is required" });
         }
 
-        // Already paid
         if (user.hasPaidRegistration) {
             return res.status(200).json({
                 message: "Registration already paid.",
@@ -242,7 +270,6 @@ const verifyRegistrationPayment = async (req, res) => {
         const transaction = paystackResponse.data;
 
         if (transaction.status === "success") {
-            // Mark user as registration-paid
             await User.findByIdAndUpdate(user._id, {
                 hasPaidRegistration: true,
                 registrationPaymentRef: reference
@@ -269,6 +296,7 @@ const getUserTransactions = async (req, res) => {
     try {
         const payments = await Payment.find({ user: req.user._id })
             .populate("course", "title price")
+            .populate("examAttempt", "score passed submittedAt")
             .sort({ createdAt: -1 });
 
         res.status(200).json({ payments });
@@ -285,6 +313,7 @@ const getAllTransactions = async (req, res) => {
         const payments = await Payment.find()
             .populate("user", "firstName otherName surname email")
             .populate("course", "title price")
+            .populate("examAttempt", "score passed")
             .sort({ createdAt: -1 });
 
         const totalRevenue = payments
@@ -300,8 +329,8 @@ const getAllTransactions = async (req, res) => {
 };
 
 module.exports = {
-    initializePayment,
-    verifyPayment,
+    initializeCertificatePayment,
+    verifyCertificatePayment,
     initializeRegistrationPayment,
     verifyRegistrationPayment,
     getUserTransactions,
