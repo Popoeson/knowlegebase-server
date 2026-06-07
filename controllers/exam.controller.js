@@ -1,7 +1,6 @@
 const ExamAttempt = require("../models/ExamAttempt");
 const Question = require("../models/Question");
 const Course = require("../models/Course");
-const Payment = require("../models/Payment");
 
 // ── HELPER: SHUFFLE ARRAY ──
 const shuffleArray = (array) => {
@@ -88,44 +87,12 @@ const startAttempt = async (req, res) => {
             });
         }
 
-        // For certification — verify payment
-        if (type === "certification") {
-            const payment = await Payment.findOne({
-                user: userId,
-                course: courseId,
-                status: "success"
-            }).sort({ createdAt: -1 });
-
-            if (!payment) {
-                return res.status(403).json({
-                    message: "Payment required to take certification exam",
-                    requiresPayment: true,
-                    courseId
-                });
-            }
-
-            const usedAttempt = await ExamAttempt.findOne({
-                user: userId,
-                course: courseId,
-                type: "certification",
-                paymentRef: payment.reference,
-                status: { $in: ["submitted", "timed-out"] }
-            });
-
-            if (usedAttempt) {
-                return res.status(403).json({
-                    message: "Payment required to take certification exam",
-                    requiresPayment: true,
-                    courseId
-                });
-            }
-        }
-
         // Fetch questions from correct bank
         const allQuestions = await Question.find({
             course: courseId,
             type,
-            isActive: true
+            isActive: true,
+            isApproved: true
         });
 
         const questionLimit = type === "certification"
@@ -139,17 +106,6 @@ const startAttempt = async (req, res) => {
         }
 
         const selected = shuffleArray(allQuestions).slice(0, questionLimit);
-
-        // Get payment ref if certification
-        let paymentRef = null;
-        if (type === "certification") {
-            const latestPayment = await Payment.findOne({
-                user: userId,
-                course: courseId,
-                status: "success"
-            }).sort({ createdAt: -1 });
-            paymentRef = latestPayment ? latestPayment.reference : null;
-        }
 
         const attemptQuestions = selected.map(q => ({
             question: q._id,
@@ -167,8 +123,7 @@ const startAttempt = async (req, res) => {
             course: courseId,
             type,
             questions: attemptQuestions,
-            startedAt: new Date(),
-            paymentRef
+            startedAt: new Date()
         });
 
         res.status(201).json({
@@ -400,46 +355,10 @@ const getUserAttempts = async (req, res) => {
     }
 };
 
-// ── CHECK PAYMENT STATUS ──
-const checkPaymentStatus = async (req, res) => {
-    try {
-        const { courseId } = req.params;
-        const userId = req.user._id;
-
-        const payment = await Payment.findOne({
-            user: userId,
-            course: courseId,
-            status: "success"
-        }).sort({ createdAt: -1 });
-
-        if (!payment) {
-            return res.status(200).json({ paid: false });
-        }
-
-        const usedAttempt = await ExamAttempt.findOne({
-            user: userId,
-            course: courseId,
-            type: "certification",
-            paymentRef: payment.reference,
-            status: { $in: ["submitted", "timed-out"] }
-        });
-
-        res.status(200).json({
-            paid: !usedAttempt,
-            reference: payment.reference
-        });
-
-    } catch (error) {
-        console.error("Check payment error:", error);
-        res.status(500).json({ message: "Failed to check payment status." });
-    }
-};
-
 module.exports = {
     startAttempt,
     saveAnswer,
     submitAttempt,
     getAttemptResult,
-    getUserAttempts,
-    checkPaymentStatus
+    getUserAttempts
 };
