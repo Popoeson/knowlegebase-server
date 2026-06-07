@@ -10,7 +10,17 @@ const paymentSchema = new mongoose.Schema(
         course: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Course",
-            required: true
+            default: null
+        },
+        examAttempt: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "ExamAttempt",
+            default: null
+        },
+        type: {
+            type: String,
+            enum: ["registration", "certificate"],
+            default: "certificate"
         },
         reference: {
             type: String,
@@ -19,8 +29,7 @@ const paymentSchema = new mongoose.Schema(
         },
         amount: {
             type: Number,
-            required: true,
-            comment: "Amount in kobo"
+            required: true
         },
         currency: {
             type: String,
