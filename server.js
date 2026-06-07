@@ -19,12 +19,22 @@ connectDB();
 
 // Middleware
 app.use(cors({
-    origin: process.env.CLIENT_URL,
+    origin: function(origin, callback) {
+        const allowed = [
+            "https://knowlegebase-client.vercel.app",
+            process.env.CLIENT_URL
+        ].filter(Boolean);
+
+        // Allow requests with no origin (mobile apps, Postman, server-to-server)
+        if (!origin || allowed.includes(origin)) {
+            callback(null, true);
+        } else {
+            console.error("CORS blocked origin:", origin);
+            callback(new Error("Not allowed by CORS"));
+        }
+    },
     credentials: true
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
 // Health check route
 app.get("/", (req, res) => {
     res.json({ message: "KNOWLEDGEBASE API is running" });
