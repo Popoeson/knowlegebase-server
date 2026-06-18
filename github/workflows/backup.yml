@@ -1,0 +1,35 @@
+# .github/workflows/backup.yml
+# AKOWE — Nightly MongoDB Backup
+# Runs at 1:00 AM UTC daily (2:00 AM WAT)
+# Can also be triggered manually from the Actions tab
+
+name: Nightly MongoDB Backup
+
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch: # allows manual trigger from GitHub Actions tab
+
+jobs:
+  backup:
+    name: Backup MongoDB to akowe-backups
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run backup script
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          GITHUB_BACKUP_TOKEN: ${{ secrets.GITHUB_BACKUP_TOKEN }}
+        run: node scripts/backup.js
