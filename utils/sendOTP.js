@@ -9,7 +9,7 @@ const sendEmail = (to, toName, subject, htmlContent) => {
         const payload = JSON.stringify({
             sender: {
                 email: process.env.EMAIL_USER,
-                name: "KNOWLEDGEBASE"
+                name: "TECH COMPETENCE INSTITUTE"
             },
             to: [{ email: to, name: toName }],
             subject,
@@ -46,12 +46,12 @@ const sendEmail = (to, toName, subject, htmlContent) => {
 };
 
 const sendOTP = async (email, fullName, otp) => {
-    const subject = "Verify Your Email — KNOWLEDGEBASE";
+    const subject = "Verify Your Email — TECH COMPETENCE INSTITUTE";
     const htmlContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background-color: #F8F9FB;">
             
             <div style="text-align: center; margin-bottom: 32px;">
-                <h1 style="color: #2563EB; font-size: 24px; margin: 0;">KNOWLEDGEBASE</h1>
+                <h1 style="color: #2563EB; font-size: 24px; margin: 0;">TECH COMPETENCE INSTITUTE</h1>
             </div>
 
             <div style="background-color: #FFFFFF; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0,0,0,0.07);">
@@ -61,7 +61,7 @@ const sendOTP = async (email, fullName, otp) => {
                 </h2>
 
                 <p style="color: #475569; font-size: 15px; line-height: 1.6; margin-bottom: 24px;">
-                    Hi ${fullName}, welcome to KNOWLEDGEBASE. Use the OTP below to verify your email address. It expires in 10 minutes.
+                    Hi ${fullName}, welcome to TECH COMPETENCE INSTITUTE. Use the OTP below to verify your email address. It expires in 10 minutes.
                 </p>
 
                 <div style="text-align: center; margin: 32px 0;">
@@ -84,7 +84,7 @@ const sendOTP = async (email, fullName, otp) => {
             </div>
 
             <p style="color: #94A3B8; font-size: 12px; text-align: center; margin-top: 24px;">
-                © ${new Date().getFullYear()} KNOWLEDGEBASE. All rights reserved.
+                © ${new Date().getFullYear()} TECH COMPETENCE INSTITUTE. All rights reserved.
             </p>
 
         </div>
@@ -94,12 +94,12 @@ const sendOTP = async (email, fullName, otp) => {
 };
 
 const sendPasswordResetOTP = async (email, fullName, otp) => {
-    const subject = "Password Reset OTP — KNOWLEDGEBASE";
+    const subject = "Password Reset OTP — TECH COMPETENCE INSTITUTE";
     const htmlContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background-color: #F8F9FB;">
             
             <div style="text-align: center; margin-bottom: 32px;">
-                <h1 style="color: #2563EB; font-size: 24px; margin: 0;">KNOWLEDGEBASE</h1>
+                <h1 style="color: #2563EB; font-size: 24px; margin: 0;">TECH COMPETENCE INSTITUTE</h1>
             </div>
 
             <div style="background-color: #FFFFFF; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0,0,0,0.07);">
@@ -132,7 +132,7 @@ const sendPasswordResetOTP = async (email, fullName, otp) => {
             </div>
 
             <p style="color: #94A3B8; font-size: 12px; text-align: center; margin-top: 24px;">
-                © ${new Date().getFullYear()} KNOWLEDGEBASE. All rights reserved.
+                © ${new Date().getFullYear()} TECH COMPETENCE INSTITUTE. All rights reserved.
             </p>
 
         </div>
