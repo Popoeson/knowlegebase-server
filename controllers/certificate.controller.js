@@ -13,7 +13,7 @@ const generateCertificateId = () => {
     for (let i = 0; i < 5; i++) {
         random += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    return `KB-${year}-${random}`;
+    return `TIC-${year}-${random}`;
 };
 
 // ── GENERATE PDF ──
@@ -129,11 +129,11 @@ const generateCertificatePDF = async (user, course, certificate) => {
             <div class="certificate">
                 <div class="inner-border"></div>
                 <div class="cert-header">
-                    <div class="cert-brand">KNOWLEDGEBASE</div>
+                    <div class="cert-brand">TECH COMPETENCE INSTITUTE</div>
                     <div class="cert-authority">Certification Authority</div>
                 </div>
                 <div class="cert-body">
-                    <div class="cert-watermark">KB</div>
+                    <div class="cert-watermark">TIC</div>
                     <div class="cert-achievement-title">Certificate of Achievement</div>
                     <p class="cert-certifies">This certifies that</p>
                     <h2 class="cert-name">${user.fullName}</h2>
@@ -151,7 +151,7 @@ const generateCertificatePDF = async (user, course, certificate) => {
                             <p class="cert-footer-value">${issuedDate}</p>
                         </div>
                         <div class="cert-seal">
-                            <div class="cert-seal-text">✦<br>VERIFIED<br>KNOWLEDGEBASE<br>✦</div>
+                            <div class="cert-seal-text">✦<br>VERIFIED<br>TECH COMPETENCE INSTITUTE<br>✦</div>
                         </div>
                         <div class="cert-footer-item">
                             <p class="cert-footer-label">Certificate ID</p>
