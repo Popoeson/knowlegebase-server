@@ -46,7 +46,6 @@ const initializeCertificatePayment = async (req, res) => {
             return res.status(400).json({ message: "Attempt ID and amount are required" });
         }
 
-        // Verify the attempt belongs to this user, is certification, and passed
         const attempt = await ExamAttempt.findOne({
             _id: attemptId,
             user: user._id,
@@ -61,7 +60,6 @@ const initializeCertificatePayment = async (req, res) => {
             });
         }
 
-        // Check if certificate payment already made for this attempt
         const existingPayment = await Payment.findOne({
             examAttempt: attemptId,
             user: user._id,
@@ -100,7 +98,6 @@ const initializeCertificatePayment = async (req, res) => {
             });
         }
 
-        // Save pending payment record
         await Payment.create({
             user: user._id,
             course: attempt.course._id,
@@ -129,6 +126,7 @@ const initializeCertificatePayment = async (req, res) => {
 const verifyCertificatePayment = async (req, res) => {
     try {
         const { reference } = req.params;
+        const user = req.user;
 
         if (!reference) {
             return res.status(400).json({ message: "Payment reference is required" });
@@ -139,7 +137,13 @@ const verifyCertificatePayment = async (req, res) => {
             return res.status(404).json({ message: "Payment record not found" });
         }
 
-        // Already verified
+        // Ownership check — this payment record must belong to the logged-in user
+        if (payment.user.toString() !== user._id.toString()) {
+            return res.status(403).json({
+                message: "This payment reference does not belong to your account."
+            });
+        }
+
         if (payment.status === "success") {
             return res.status(200).json({
                 message: "Payment already verified",
@@ -159,6 +163,14 @@ const verifyCertificatePayment = async (req, res) => {
         }
 
         const transaction = paystackResponse.data;
+
+        // Cross-check Paystack's own metadata also agrees on ownership
+        const metaUserId = transaction.metadata?.userId;
+        if (metaUserId && metaUserId !== user._id.toString()) {
+            return res.status(403).json({
+                message: "This payment reference does not belong to your account."
+            });
+        }
 
         if (transaction.status === "success") {
             payment.status = "success";
@@ -256,6 +268,15 @@ const verifyRegistrationPayment = async (req, res) => {
             });
         }
 
+        // Prevent reuse — if this reference already activated ANY account,
+        // it cannot be reused, even by a different user
+        const alreadyUsed = await User.findOne({ registrationPaymentRef: reference });
+        if (alreadyUsed) {
+            return res.status(409).json({
+                message: "This payment reference has already been used to activate an account."
+            });
+        }
+
         const paystackResponse = await paystackRequest(
             "GET",
             `/transaction/verify/${reference}`
@@ -269,21 +290,39 @@ const verifyRegistrationPayment = async (req, res) => {
 
         const transaction = paystackResponse.data;
 
-        if (transaction.status === "success") {
-            await User.findByIdAndUpdate(user._id, {
-                hasPaidRegistration: true,
-                registrationPaymentRef: reference
-            });
-
-            return res.status(200).json({
-                message: "Registration payment verified. Welcome to TECH COMPETENCE INSTITUTE!"
-            });
-        } else {
+        if (transaction.status !== "success") {
             return res.status(400).json({
                 message: "Payment was not successful. Please try again.",
                 status: transaction.status
             });
         }
+
+        // Ownership check — reference must belong to the logged-in user
+        const metaUserId = transaction.metadata?.userId;
+        if (!metaUserId || metaUserId !== user._id.toString()) {
+            console.warn(
+                `Registration payment ownership mismatch — reference ${reference} belongs to user ${metaUserId}, attempted by ${user._id}`
+            );
+            return res.status(403).json({
+                message: "This payment reference does not belong to your account."
+            });
+        }
+
+        // Type check — reject certificate/other payment types being replayed here
+        if (transaction.metadata?.type !== "registration") {
+            return res.status(403).json({
+                message: "This payment reference is not a registration payment."
+            });
+        }
+
+        await User.findByIdAndUpdate(user._id, {
+            hasPaidRegistration: true,
+            registrationPaymentRef: reference
+        });
+
+        return res.status(200).json({
+            message: "Registration payment verified. Welcome to TECH COMPETENCE INSTITUTE!"
+        });
 
     } catch (error) {
         console.error("Verify registration payment error:", error);
