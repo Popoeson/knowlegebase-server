@@ -82,6 +82,7 @@ const initializeCertificatePayment = async (req, res) => {
             amount: amountKobo,
             reference,
             callback_url: `${process.env.CLIENT_URL}/pages/payment-callback.html`,
+            split_code: process.env.PAYSTACK_SPLIT_CODE,
             metadata: {
                 userId: user._id.toString(),
                 attemptId: attemptId.toString(),
@@ -224,6 +225,7 @@ const initializeRegistrationPayment = async (req, res) => {
             amount: amountKobo,
             reference,
             callback_url: `${process.env.CLIENT_URL}/pages/registration-payment-callback.html`,
+            split_code: process.env.PAYSTACK_SPLIT_CODE,
             metadata: {
                 userId: user._id.toString(),
                 fullName: user.fullName,
