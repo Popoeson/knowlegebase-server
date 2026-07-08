@@ -75,7 +75,7 @@ const initializeCertificatePayment = async (req, res) => {
         }
 
         const amountKobo = Math.round(amountNGN * 100);
-        const reference = `TCI-CERT-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+        const reference = `ASO-CERT-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
         const paystackResponse = await paystackRequest("POST", "/transaction/initialize", {
             email: user.email,
@@ -218,7 +218,7 @@ const initializeRegistrationPayment = async (req, res) => {
         }
 
         const amountKobo = Math.round(amountNGN * 100);
-        const reference = `TCI-REG-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+        const reference = `ASO-REG-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
         const paystackResponse = await paystackRequest("POST", "/transaction/initialize", {
             email: user.email,
@@ -323,7 +323,7 @@ const verifyRegistrationPayment = async (req, res) => {
         });
 
         return res.status(200).json({
-            message: "Registration payment verified. Welcome to TECH COMPETENCE INSTITUTE!"
+            message: "Registration payment verified. Welcome to ASODEM!"
         });
 
     } catch (error) {
