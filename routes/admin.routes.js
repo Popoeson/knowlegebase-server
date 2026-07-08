@@ -66,11 +66,11 @@ router.delete("/categories/:id", deleteCategory);
 router.get("/questions", getQuestions);
 router.post("/questions", addQuestion);
 router.put("/questions/:id", editQuestion);
-router.delete("/questions/:id", deleteQuestion);
 router.post("/questions/bulk-upload", excelUpload.single("file"), bulkUploadQuestions);
 router.get("/questions/template", downloadTemplate);
-router.delete("/questions/bulk-delete", bulkDeleteQuestions);
-
+router.delete("/questions/bulk-delete", bulkDeleteQuestions);   
+router.delete("/questions/:id", deleteQuestion);  
+       
 // ── AI QUESTION GENERATION ──
 // Order matters: specific paths must come before parameterised ones
 router.post("/questions/ai-generate", generateQuestionsWithAI);
