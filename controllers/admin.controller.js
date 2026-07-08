@@ -3,10 +3,22 @@ const Course = require("../models/Course");
 const Category = require("../models/Category");
 const Question = require("../models/Question");
 const { uploadToCloudinary } = require("../config/cloudinary");
+const cloudinary = require("cloudinary").v2;
 const Cache = require("../utils/cache");
 
 const Groq = require("groq-sdk");
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+// Extract Cloudinary public_id from a secure_url
+const getCloudinaryPublicId = (url) => {
+    try {
+        const afterUpload = url.split("/upload/")[1];        // "v1778435701/knowledgebase/courses/xyz.jpg"
+        const withoutVersion = afterUpload.split("/").slice(1).join("/"); // "knowledgebase/courses/xyz.jpg"
+        return withoutVersion.replace(/\.[^/.]+$/, "");        // "knowledgebase/courses/xyz"
+    } catch (err) {
+        return null;
+    }
+};
 
 // ── ADMIN DASHBOARD STATS ──
 const getDashboardStats = async (req, res) => {
@@ -228,14 +240,29 @@ const toggleCourseStatus = async (req, res) => {
 };
 
 
-// ── DELETE COURSE ──
+// ── DELETE COURSE (HARD DELETE) ──
 const deleteCourse = async (req, res) => {
     try {
         const course = await Course.findById(req.params.id);
         if (!course) return res.status(404).json({ message: "Course not found" });
 
-        course.isActive = false;
-        await course.save();
+        // Remove dependent questions
+        await Question.deleteMany({ course: req.params.id });
+
+        // Remove thumbnail from Cloudinary
+        if (course.thumbnail) {
+            const publicId = getCloudinaryPublicId(course.thumbnail);
+            if (publicId) {
+                try {
+                    await cloudinary.uploader.destroy(publicId);
+                } catch (err) {
+                    console.error("Cloudinary delete error:", err.message);
+                    // Don't block course deletion if image cleanup fails
+                }
+            }
+        }
+
+        await Course.findByIdAndDelete(req.params.id);
 
         // Invalidate affected caches
         Cache.invalidate("courses:all");
@@ -243,7 +270,7 @@ const deleteCourse = async (req, res) => {
         Cache.invalidate(`course:${req.params.id}`);
         Cache.invalidate("admin:stats");
 
-        res.status(200).json({ message: "Course deleted successfully" });
+        res.status(200).json({ message: "Course deleted permanently" });
     } catch (error) {
         console.error("Delete course error:", error);
         res.status(500).json({ message: "Failed to delete course." });
