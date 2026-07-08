@@ -19,6 +19,7 @@ app.use(cors({
     origin: function(origin, callback) {
         const allowed = [
             "https://knowlegebase-client.vercel.app",
+"https://www.asodem.com/",
             process.env.CLIENT_URL
         ].filter(Boolean);
 
