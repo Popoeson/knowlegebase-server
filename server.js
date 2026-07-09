@@ -18,11 +18,10 @@ connectDB();
 app.use(cors({
     origin: function(origin, callback) {
         const allowed = [
-            "https://knowlegebase-client.vercel.app",
-            "https://www.asodem.com",
-            "https://asodem.com",
-            process.env.CLIENT_URL
-        ].filter(Boolean);
+    "https://knowlegebase-client.vercel.app",
+    "https://www.asodem.com",
+    process.env.CLIENT_URL
+].filter(Boolean);
 
         if (!origin || allowed.includes(origin)) {
             callback(null, true);
