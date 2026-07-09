@@ -1,6 +1,7 @@
 const ExamAttempt = require("../models/ExamAttempt");
 const Question = require("../models/Question");
 const Course = require("../models/Course");
+const Payment = require("../models/Payment");
 
 // ── HELPER: SHUFFLE ARRAY ──
 const shuffleArray = (array) => {
@@ -67,6 +68,8 @@ const startAttempt = async (req, res) => {
                 });
             }
 
+            // Resuming an in-progress attempt — payment (if applicable) was
+            // already consumed when this attempt was created, so no re-check.
             return res.status(200).json({
                 message: "Resuming existing attempt",
                 attempt: {
@@ -85,6 +88,31 @@ const startAttempt = async (req, res) => {
                     answers: Object.fromEntries(existingAttempt.answers)
                 }
             });
+        }
+
+        // ── CERTIFICATION PAYMENT GATE ──
+        // A certification attempt requires a successful, unused certificate
+        // payment for this course. One payment = one sitting: it gets
+        // consumed (linked to this attempt) below and cannot be reused for
+        // a retry — a fresh payment is required if the user fails.
+        let paymentToConsume = null;
+
+        if (type === "certification") {
+            paymentToConsume = await Payment.findOne({
+                user: userId,
+                course: courseId,
+                type: "certificate",
+                status: "success",
+                examAttempt: null
+            });
+
+            if (!paymentToConsume) {
+                return res.status(402).json({
+                    message: "Payment required to take the certification exam for this course.",
+                    code: "EXAM_PAYMENT_REQUIRED",
+                    courseId
+                });
+            }
         }
 
         // Fetch questions from correct bank
@@ -125,6 +153,14 @@ const startAttempt = async (req, res) => {
             questions: attemptQuestions,
             startedAt: new Date()
         });
+
+        // Consume the payment now that the attempt exists — this both marks
+        // it "used" (blocking reuse for a retry) and links it so
+        // certificate.controller.js can find it after a pass.
+        if (paymentToConsume) {
+            paymentToConsume.examAttempt = attempt._id;
+            await paymentToConsume.save();
+        }
 
         res.status(201).json({
             message: "Exam started",
