@@ -37,39 +37,37 @@ const paystackRequest = (method, path, body = null) => {
 };
 
 // ── INITIALIZE CERTIFICATE PAYMENT ──
+// NOTE: this now runs BEFORE the exam attempt exists. It gates starting a
+// certification attempt, not generating a certificate. One successful,
+// unused payment = one exam sitting (consumed in exam.controller.startAttempt).
 const initializeCertificatePayment = async (req, res) => {
     try {
-        const { attemptId, amountNGN } = req.body;
+        const { courseId, amountNGN } = req.body;
         const user = req.user;
 
-        if (!attemptId || !amountNGN) {
-            return res.status(400).json({ message: "Attempt ID and amount are required" });
+        if (!courseId || !amountNGN) {
+            return res.status(400).json({ message: "Course ID and amount are required" });
         }
 
-        const attempt = await ExamAttempt.findOne({
-            _id: attemptId,
-            user: user._id,
-            type: "certification",
-            passed: true,
-            status: { $in: ["submitted", "timed-out"] }
-        }).populate("course", "title price");
-
-        if (!attempt) {
-            return res.status(404).json({
-                message: "No passing certification attempt found"
-            });
+        const course = await Course.findOne({ _id: courseId, isActive: true });
+        if (!course) {
+            return res.status(404).json({ message: "Course not found" });
         }
 
-        const existingPayment = await Payment.findOne({
-            examAttempt: attemptId,
+        // If the user already has a successful payment for this course that
+        // hasn't been consumed by an attempt yet, don't charge them again —
+        // they should just go start the exam.
+        const existingUnusedPayment = await Payment.findOne({
             user: user._id,
+            course: courseId,
             type: "certificate",
-            status: "success"
+            status: "success",
+            examAttempt: null
         });
 
-        if (existingPayment) {
+        if (existingUnusedPayment) {
             return res.status(400).json({
-                message: "Certificate payment already made for this attempt.",
+                message: "You already have an unused payment for this course. You can start your exam.",
                 code: "ALREADY_PAID"
             });
         }
@@ -85,8 +83,8 @@ const initializeCertificatePayment = async (req, res) => {
             split_code: process.env.PAYSTACK_SPLIT_CODE,
             metadata: {
                 userId: user._id.toString(),
-                attemptId: attemptId.toString(),
-                courseTitle: attempt.course.title,
+                courseId: courseId.toString(),
+                courseTitle: course.title,
                 fullName: user.fullName,
                 type: "certificate"
             },
@@ -101,8 +99,8 @@ const initializeCertificatePayment = async (req, res) => {
 
         await Payment.create({
             user: user._id,
-            course: attempt.course._id,
-            examAttempt: attemptId,
+            course: course._id,
+            examAttempt: null,
             type: "certificate",
             reference,
             amount: amountKobo,
@@ -111,7 +109,7 @@ const initializeCertificatePayment = async (req, res) => {
         });
 
         res.status(200).json({
-            message: "Certificate payment initialized",
+            message: "Exam payment initialized",
             reference,
             accessCode: paystackResponse.data.access_code,
             authorizationUrl: paystackResponse.data.authorization_url
@@ -148,7 +146,7 @@ const verifyCertificatePayment = async (req, res) => {
         if (payment.status === "success") {
             return res.status(200).json({
                 message: "Payment already verified",
-                attemptId: payment.examAttempt
+                courseId: payment.course
             });
         }
 
@@ -181,7 +179,7 @@ const verifyCertificatePayment = async (req, res) => {
 
             return res.status(200).json({
                 message: "Payment verified successfully",
-                attemptId: payment.examAttempt
+                courseId: payment.course
             });
         } else {
             payment.status = "failed";
