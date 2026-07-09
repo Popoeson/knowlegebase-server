@@ -3,6 +3,7 @@ const Payment = require("../models/Payment");
 const Course = require("../models/Course");
 const User = require("../models/User");
 const ExamAttempt = require("../models/ExamAttempt");
+const { getRegistrationAmountNGN, getCourseAmountNGN } = require("../utils/pricing");
 
 // ── HELPER: CALL PAYSTACK API ──
 const paystackRequest = (method, path, body = null) => {
@@ -42,17 +43,21 @@ const paystackRequest = (method, path, body = null) => {
 // unused payment = one exam sitting (consumed in exam.controller.startAttempt).
 const initializeCertificatePayment = async (req, res) => {
     try {
-        const { courseId, amountNGN } = req.body;
+        const { courseId } = req.body;
         const user = req.user;
 
-        if (!courseId || !amountNGN) {
-            return res.status(400).json({ message: "Course ID and amount are required" });
+        if (!courseId) {
+            return res.status(400).json({ message: "Course ID is required" });
         }
 
         const course = await Course.findOne({ _id: courseId, isActive: true });
         if (!course) {
             return res.status(404).json({ message: "Course not found" });
         }
+
+        // Amount is computed server-side from the course's stored USD price —
+        // never trust a client-supplied amount here.
+        const amountNGN = await getCourseAmountNGN(course.price);
 
         // If the user already has a successful payment for this course that
         // hasn't been consumed by an attempt yet, don't charge them again —
@@ -111,6 +116,7 @@ const initializeCertificatePayment = async (req, res) => {
         res.status(200).json({
             message: "Exam payment initialized",
             reference,
+            amountNGN,
             accessCode: paystackResponse.data.access_code,
             authorizationUrl: paystackResponse.data.authorization_url
         });
@@ -209,11 +215,9 @@ const initializeRegistrationPayment = async (req, res) => {
             });
         }
 
-        const { amountNGN } = req.body;
-
-        if (!amountNGN) {
-            return res.status(400).json({ message: "Amount is required" });
-        }
+        // Amount is computed server-side from REGISTRATION_FEE_USD — never
+        // trust a client-supplied amount here.
+        const amountNGN = await getRegistrationAmountNGN();
 
         const amountKobo = Math.round(amountNGN * 100);
         const reference = `ASO-REG-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
@@ -241,6 +245,7 @@ const initializeRegistrationPayment = async (req, res) => {
         res.status(200).json({
             message: "Registration payment initialized",
             reference,
+            amountNGN,
             accessCode: paystackResponse.data.access_code,
             authorizationUrl: paystackResponse.data.authorization_url
         });
