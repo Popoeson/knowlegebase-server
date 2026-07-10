@@ -7,15 +7,15 @@ const {
     getUserTransactions
 } = require("../controllers/payment.controller");
 
-// @route   POST /api/payment/certificate/initialize
-// @desc    Initialize certificate payment after passing exam
+// @route   POST /api/payment/initialize
+// @desc    Initialize exam payment (required before starting a certification attempt)
 // @access  Private
-router.post("/certificate/initialize", protect, initializeCertificatePayment);
+router.post("/initialize", protect, initializeCertificatePayment);
 
-// @route   GET /api/payment/certificate/verify/:reference
-// @desc    Verify certificate payment after Paystack callback
+// @route   GET /api/payment/verify/:reference
+// @desc    Verify exam payment after Paystack callback
 // @access  Private
-router.get("/certificate/verify/:reference", protect, verifyCertificatePayment);
+router.get("/verify/:reference", protect, verifyCertificatePayment);
 
 // @route   GET /api/payment/transactions
 // @desc    Get user transaction history
