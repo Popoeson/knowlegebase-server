@@ -51,7 +51,7 @@ const sendOTP = async (email, fullName, otp) => {
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background-color: #F8F9FB;">
             
             <div style="text-align: center; margin-bottom: 32px;">
-                <h1 style="color: #2563EB; font-size: 24px; margin: 0;">TECH COMPETENCE INSTITUTE</h1>
+                <h1 style="color: #2563EB; font-size: 24px; margin: 0;">ASODEM</h1>
             </div>
 
             <div style="background-color: #FFFFFF; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0,0,0,0.07);">
@@ -61,7 +61,7 @@ const sendOTP = async (email, fullName, otp) => {
                 </h2>
 
                 <p style="color: #475569; font-size: 15px; line-height: 1.6; margin-bottom: 24px;">
-                    Hi ${fullName}, welcome to TECH COMPETENCE INSTITUTE. Use the OTP below to verify your email address. It expires in 10 minutes.
+                    Hi ${fullName}, welcome to ASODEM. Use the OTP below to verify your email address. It expires in 10 minutes.
                 </p>
 
                 <div style="text-align: center; margin: 32px 0;">
