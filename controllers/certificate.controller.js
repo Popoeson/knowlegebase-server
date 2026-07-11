@@ -92,7 +92,7 @@ const generateCertificatePDF = async (user, course, certificate) => {
                     letter-spacing: 5px; text-transform: uppercase; margin-bottom: 18px;
                 }
                 .cert-achievement-title::before,
-                .cert-achievement-title::after { content: " \2726 "; color: #C9A84C; }
+                .cert-achievement-title::after { content: " \u2726 "; color: #C9A84C; }
                 .cert-certifies { font-size: 14px; color: #666; margin-bottom: 10px; }
                 .cert-name {
                     font-family: 'Georgia', serif; font-size: 48px;
