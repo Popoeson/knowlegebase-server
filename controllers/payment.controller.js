@@ -242,6 +242,19 @@ const initializeRegistrationPayment = async (req, res) => {
             });
         }
 
+        // Persist this as a Payment record so it shows up in admin
+        // Transactions, same as exam/certificate payments already do.
+        await Payment.create({
+            user: user._id,
+            course: null,
+            examAttempt: null,
+            type: "registration",
+            reference,
+            amount: amountKobo,
+            currency: "NGN",
+            status: "pending"
+        });
+
         res.status(200).json({
             message: "Registration payment initialized",
             reference,
@@ -282,6 +295,18 @@ const verifyRegistrationPayment = async (req, res) => {
             });
         }
 
+        // Find the Payment record created at initialization time
+        const payment = await Payment.findOne({ reference });
+        if (!payment) {
+            return res.status(404).json({ message: "Payment record not found" });
+        }
+
+        if (payment.user.toString() !== user._id.toString()) {
+            return res.status(403).json({
+                message: "This payment reference does not belong to your account."
+            });
+        }
+
         const paystackResponse = await paystackRequest(
             "GET",
             `/transaction/verify/${reference}`
@@ -296,6 +321,9 @@ const verifyRegistrationPayment = async (req, res) => {
         const transaction = paystackResponse.data;
 
         if (transaction.status !== "success") {
+            payment.status = "failed";
+            await payment.save();
+
             return res.status(400).json({
                 message: "Payment was not successful. Please try again.",
                 status: transaction.status
@@ -319,6 +347,11 @@ const verifyRegistrationPayment = async (req, res) => {
                 message: "This payment reference is not a registration payment."
             });
         }
+
+        payment.status = "success";
+        payment.channel = transaction.channel;
+        payment.paidAt = new Date(transaction.paid_at);
+        await payment.save();
 
         await User.findByIdAndUpdate(user._id, {
             hasPaidRegistration: true,
@@ -372,11 +405,51 @@ const getAllTransactions = async (req, res) => {
     }
 };
 
+// ── DELETE SINGLE TRANSACTION (ADMIN) ──
+const deleteTransaction = async (req, res) => {
+    try {
+        const payment = await Payment.findByIdAndDelete(req.params.id);
+
+        if (!payment) {
+            return res.status(404).json({ message: "Transaction not found" });
+        }
+
+        res.status(200).json({ message: "Transaction deleted successfully" });
+
+    } catch (error) {
+        console.error("Delete transaction error:", error);
+        res.status(500).json({ message: "Failed to delete transaction." });
+    }
+};
+
+// ── BULK DELETE TRANSACTIONS (ADMIN) ──
+const bulkDeleteTransactions = async (req, res) => {
+    try {
+        const { transactionIds } = req.body;
+
+        if (!transactionIds || !Array.isArray(transactionIds) || transactionIds.length === 0) {
+            return res.status(400).json({ message: "No transaction IDs provided" });
+        }
+
+        const result = await Payment.deleteMany({ _id: { $in: transactionIds } });
+
+        res.status(200).json({
+            message: `${result.deletedCount} transaction${result.deletedCount !== 1 ? "s" : ""} deleted successfully`
+        });
+
+    } catch (error) {
+        console.error("Bulk delete transactions error:", error);
+        res.status(500).json({ message: "Failed to delete transactions." });
+    }
+};
+
 module.exports = {
     initializeCertificatePayment,
     verifyCertificatePayment,
     initializeRegistrationPayment,
     verifyRegistrationPayment,
     getUserTransactions,
-    getAllTransactions
+    getAllTransactions,
+    deleteTransaction,
+    bulkDeleteTransactions
 };
