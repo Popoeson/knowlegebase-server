@@ -1,25 +1,94 @@
 const express = require("express");
 const router = express.Router();
-const { protect } = require("../middleware/auth.middleware");
+const { protect, adminOnly } = require("../middleware/auth.middleware");
+const upload = require("../middleware/upload.middleware");
+const excelUpload = require("../middleware/excel.middleware");
+
 const {
-    initializeCertificatePayment,
-    verifyCertificatePayment,
-    getUserTransactions
+    getDashboardStats,
+    getUsers,
+    deleteUser,
+    getAllCourses,
+    createCourse,
+    editCourse,
+    toggleCourseStatus,
+    deleteCourse,
+    getCategories,
+    createCategory,
+    editCategory,
+    deleteCategory,
+    generateQuestionsWithAI,
+    saveApprovedQuestions,
+    rejectAIQuestions
+} = require("../controllers/admin.controller");
+
+const {
+    getQuestions,
+    addQuestion,
+    editQuestion,
+    deleteQuestion,
+    bulkUploadQuestions,
+    downloadTemplate,
+    bulkDeleteQuestions
+} = require("../controllers/question.controller");
+
+const {
+    getAllTransactions,
+    deleteTransaction,
+    bulkDeleteTransactions
 } = require("../controllers/payment.controller");
 
-// @route   POST /api/payment/initialize
-// @desc    Initialize exam payment (required before starting a certification attempt)
-// @access  Private
-router.post("/initialize", protect, initializeCertificatePayment);
+const {
+    getAllCertificates,
+    revokeCertificate
+} = require("../controllers/certificate.controller");
 
-// @route   GET /api/payment/verify/:reference
-// @desc    Verify exam payment after Paystack callback
-// @access  Private
-router.get("/verify/:reference", protect, verifyCertificatePayment);
+// All admin routes are protected
+router.use(protect, adminOnly);
 
-// @route   GET /api/payment/transactions
-// @desc    Get user transaction history
-// @access  Private
-router.get("/transactions", protect, getUserTransactions);
+// ── DASHBOARD ──
+router.get("/stats", getDashboardStats);
+
+// ── USERS ──
+router.get("/users", getUsers);
+router.delete("/users/:id", deleteUser);
+
+// ── COURSES ──
+router.get("/courses", getAllCourses);
+router.post("/courses", upload.single("thumbnail"), createCourse);
+router.put("/courses/:id", upload.single("thumbnail"), editCourse);
+router.patch("/courses/:id/toggle", toggleCourseStatus);
+router.delete("/courses/:id", deleteCourse);
+
+// ── CATEGORIES ──
+router.get("/categories", getCategories);
+router.post("/categories", createCategory);
+router.put("/categories/:id", editCategory);
+router.delete("/categories/:id", deleteCategory);
+
+// ── QUESTIONS ──
+router.get("/questions", getQuestions);
+router.post("/questions", addQuestion);
+router.put("/questions/:id", editQuestion);
+router.post("/questions/bulk-upload", excelUpload.single("file"), bulkUploadQuestions);
+router.get("/questions/template", downloadTemplate);
+router.delete("/questions/bulk-delete", bulkDeleteQuestions);   
+router.delete("/questions/:id", deleteQuestion);  
+
+// ── AI QUESTION GENERATION ──
+// Order matters: specific paths must come before parameterised ones
+router.post("/questions/ai-generate", generateQuestionsWithAI);
+router.post("/questions/ai-save", saveApprovedQuestions);
+router.post("/questions/ai-reject", rejectAIQuestions);
+
+// ── TRANSACTIONS ──
+// Order matters: bulk-delete must come before the parameterised :id route
+router.get("/transactions", getAllTransactions);
+router.delete("/transactions/bulk-delete", bulkDeleteTransactions);
+router.delete("/transactions/:id", deleteTransaction);
+
+// ── CERTIFICATES ──
+router.get("/certificates", getAllCertificates);
+router.patch("/certificates/:id/revoke", revokeCertificate);
 
 module.exports = router;
