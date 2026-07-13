@@ -4,6 +4,11 @@ const generateOTP = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
+// Public HTTPS URL, not base64 — inline base64 images are stripped or
+// blocked by render by many email clients (Outlook, some webmail), so a
+// normal hosted image URL is the reliable choice for email.
+const LOGO_URL = "https://www.asodem.com/asset/images/logo3.png";
+
 const sendEmail = (to, toName, subject, htmlContent) => {
     return new Promise((resolve, reject) => {
         const payload = JSON.stringify({
@@ -49,9 +54,9 @@ const sendOTP = async (email, fullName, otp) => {
     const subject = "Verify Your Email — ASODEM";
     const htmlContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background-color: #F8F9FB;">
-            
+
             <div style="text-align: center; margin-bottom: 32px;">
-                <h1 style="color: #2563EB; font-size: 24px; margin: 0;">ASODEM</h1>
+                <img src="${LOGO_URL}" alt="ASODEM" style="height: 36px; width: auto;">
             </div>
 
             <div style="background-color: #FFFFFF; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0,0,0,0.07);">
@@ -97,9 +102,9 @@ const sendPasswordResetOTP = async (email, fullName, otp) => {
     const subject = "Password Reset OTP — ASODEM";
     const htmlContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background-color: #F8F9FB;">
-            
+
             <div style="text-align: center; margin-bottom: 32px;">
-                <h1 style="color: #2563EB; font-size: 24px; margin: 0;">ASODEM</h1>
+                <img src="${LOGO_URL}" alt="ASODEM" style="height: 36px; width: auto;">
             </div>
 
             <div style="background-color: #FFFFFF; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0,0,0,0.07);">
