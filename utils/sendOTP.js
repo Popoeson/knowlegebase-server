@@ -120,7 +120,7 @@ const sendPasswordResetOTP = async (email, fullName, otp) => {
                 <div style="text-align: center; margin: 32px 0;">
                     <span style="
                         display: inline-block;
-                        background-color: #F59E0B;
+                        background-color: #2563EB;
                         color: #FFFFFF;
                         font-size: 32px;
                         font-weight: 700;
