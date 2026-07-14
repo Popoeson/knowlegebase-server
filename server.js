@@ -15,15 +15,20 @@ const app = express();
 
 connectDB();
 
+// Allowed origin(s) come entirely from the CLIENT_URL env var on each
+// Render service — production and staging each set their own value, so
+// this same code allows only the correct frontend on each deployment.
+// Supports a comma-separated list in case staging ever needs to allow
+// more than one frontend URL (e.g. both a bare .vercel.app domain and a
+// git-branch preview URL).
+const allowedOrigins = (process.env.CLIENT_URL || "")
+    .split(",")
+    .map(url => url.trim())
+    .filter(Boolean);
+
 app.use(cors({
     origin: function(origin, callback) {
-        const allowed = [
-    "https://knowlegebase-client.vercel.app",
-    "https://www.asodem.com",
-    process.env.CLIENT_URL
-].filter(Boolean);
-
-        if (!origin || allowed.includes(origin)) {
+        if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
             console.error("CORS blocked origin:", origin);
@@ -37,7 +42,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/", (req, res) => {
-    res.json({ message: "KNOWLEDGEBASE API is running" });
+    res.json({ message: "ASODEM API is running" });
 });
 
 app.use("/api/auth", authRoutes);
