@@ -4,7 +4,7 @@ const Course = require("../models/Course");
 const User = require("../models/User");
 const ExamAttempt = require("../models/ExamAttempt");
 const { getRegistrationAmountNGN, getCourseAmountNGN } = require("../utils/pricing");
-
+ 
 // ── HELPER: CALL PAYSTACK API ──
 const paystackRequest = (method, path, body = null) => {
     return new Promise((resolve, reject) => {
