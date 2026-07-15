@@ -32,7 +32,11 @@ const {
     bulkDeleteQuestions
 } = require("../controllers/question.controller");
 
-const { getAllTransactions } = require("../controllers/payment.controller");
+const {
+    getAllTransactions,
+    deleteTransaction,
+    bulkDeleteTransactions
+} = require("../controllers/payment.controller");
 
 const {
     getAllCertificates,
@@ -70,7 +74,7 @@ router.post("/questions/bulk-upload", excelUpload.single("file"), bulkUploadQues
 router.get("/questions/template", downloadTemplate);
 router.delete("/questions/bulk-delete", bulkDeleteQuestions);   
 router.delete("/questions/:id", deleteQuestion);  
-       
+
 // ── AI QUESTION GENERATION ──
 // Order matters: specific paths must come before parameterised ones
 router.post("/questions/ai-generate", generateQuestionsWithAI);
@@ -78,7 +82,10 @@ router.post("/questions/ai-save", saveApprovedQuestions);
 router.post("/questions/ai-reject", rejectAIQuestions);
 
 // ── TRANSACTIONS ──
+// Order matters: bulk-delete must come before the parameterised :id route
 router.get("/transactions", getAllTransactions);
+router.delete("/transactions/bulk-delete", bulkDeleteTransactions);
+router.delete("/transactions/:id", deleteTransaction);
 
 // ── CERTIFICATES ──
 router.get("/certificates", getAllCertificates);
