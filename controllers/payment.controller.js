@@ -4,7 +4,7 @@ const Course = require("../models/Course");
 const User = require("../models/User");
 const ExamAttempt = require("../models/ExamAttempt");
 const { getRegistrationAmountNGN, getCourseAmountNGN } = require("../utils/pricing");
- 
+
 // ── HELPER: CALL PAYSTACK API ──
 const paystackRequest = (method, path, body = null) => {
     return new Promise((resolve, reject) => {
@@ -55,13 +55,8 @@ const initializeCertificatePayment = async (req, res) => {
             return res.status(404).json({ message: "Course not found" });
         }
 
-        // Amount is computed server-side from the course's stored USD price —
-        // never trust a client-supplied amount here.
         const amountNGN = await getCourseAmountNGN(course.price);
 
-        // If the user already has a successful payment for this course that
-        // hasn't been consumed by an attempt yet, don't charge them again —
-        // they should just go start the exam.
         const existingUnusedPayment = await Payment.findOne({
             user: user._id,
             course: courseId,
@@ -142,7 +137,6 @@ const verifyCertificatePayment = async (req, res) => {
             return res.status(404).json({ message: "Payment record not found" });
         }
 
-        // Ownership check — this payment record must belong to the logged-in user
         if (payment.user.toString() !== user._id.toString()) {
             return res.status(403).json({
                 message: "This payment reference does not belong to your account."
@@ -169,7 +163,6 @@ const verifyCertificatePayment = async (req, res) => {
 
         const transaction = paystackResponse.data;
 
-        // Cross-check Paystack's own metadata also agrees on ownership
         const metaUserId = transaction.metadata?.userId;
         if (metaUserId && metaUserId !== user._id.toString()) {
             return res.status(403).json({
@@ -215,8 +208,6 @@ const initializeRegistrationPayment = async (req, res) => {
             });
         }
 
-        // Amount is computed server-side from REGISTRATION_FEE_USD — never
-        // trust a client-supplied amount here.
         const amountNGN = await getRegistrationAmountNGN();
 
         const amountKobo = Math.round(amountNGN * 100);
@@ -286,8 +277,6 @@ const verifyRegistrationPayment = async (req, res) => {
             });
         }
 
-        // Prevent reuse — if this reference already activated ANY account,
-        // it cannot be reused, even by a different user
         const alreadyUsed = await User.findOne({ registrationPaymentRef: reference });
         if (alreadyUsed) {
             return res.status(409).json({
@@ -330,7 +319,6 @@ const verifyRegistrationPayment = async (req, res) => {
             });
         }
 
-        // Ownership check — reference must belong to the logged-in user
         const metaUserId = transaction.metadata?.userId;
         if (!metaUserId || metaUserId !== user._id.toString()) {
             console.warn(
@@ -341,7 +329,6 @@ const verifyRegistrationPayment = async (req, res) => {
             });
         }
 
-        // Type check — reject certificate/other payment types being replayed here
         if (transaction.metadata?.type !== "registration") {
             return res.status(403).json({
                 message: "This payment reference is not a registration payment."
