@@ -5,9 +5,6 @@ const helmet = require("helmet");
 const connectDB = require("./config/db");
 
 // ── BOOT-TIME ENV VALIDATION ──
-// New Render services start with zero env vars (per staging setup notes).
-// Fail loud at boot instead of limping along and surfacing 500s on real
-// user requests later.
 const REQUIRED_ENV_VARS = [
     "MONGO_URI",
     "JWT_SECRET",
@@ -61,9 +58,6 @@ app.use(cors({
     credentials: true
 }));
 
-// Capture raw body alongside parsed JSON so the Paystack webhook can
-// verify the HMAC signature against the exact bytes Paystack sent —
-// signature verification fails against a re-serialized JSON.parse() output.
 app.use(express.json({
     verify: (req, res, buf) => {
         req.rawBody = buf;
