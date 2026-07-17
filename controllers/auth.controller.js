@@ -146,17 +146,17 @@ const login = async (req, res) => {
             return res.status(401).json({ message: "Invalid email or password" });
         }
 
+        const isMatch = await user.comparePassword(password);
+        if (!isMatch) {
+            return res.status(401).json({ message: "Invalid email or password" });
+        }
+
         if (!user.isVerified) {
             return res.status(401).json({
                 message: "Please verify your email before logging in.",
                 needsVerification: true,
                 email
             });
-        }
-
-        const isMatch = await user.comparePassword(password);
-        if (!isMatch) {
-            return res.status(401).json({ message: "Invalid email or password" });
         }
 
         const token = generateToken(user._id, user.role);
