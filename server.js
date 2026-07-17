@@ -36,7 +36,7 @@ const paymentRoutes = require("./routes/payment.routes");
 const certificateRoutes = require("./routes/certificate.routes");
 
 const app = express();
-
+app.set("trust proxy", 1);
 connectDB();
 
 app.use(helmet());
