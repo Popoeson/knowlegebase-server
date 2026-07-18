@@ -12,10 +12,11 @@ const certificateSchema = new mongoose.Schema(
             ref: "Course",
             required: true
         },
-        examAttempt: {
+       examAttempt: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "ExamAttempt",
-            required: true
+            required: true,
+            unique: true
         },
         certificateId: {
             type: String,
