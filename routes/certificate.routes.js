@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { protect, adminOnly } = require("../middleware/auth.middleware");
+const { moderateLimiter } = require("../middleware/rateLimit.middleware");
 const {
     generateCertificate,
     getUserCertificates,
@@ -11,11 +12,11 @@ const {
 } = require("../controllers/certificate.controller");
 
 // @route   POST /api/certificates/generate
-router.post("/generate", protect, generateCertificate);
+router.post("/generate", protect, moderateLimiter, generateCertificate);
 
 // @route   GET /api/certificates/verify/:certificateId
 // PUBLIC — must be above /:id to prevent route conflict
-router.get("/verify/:certificateId", verifyCertificate);
+router.get("/verify/:certificateId", moderateLimiter, verifyCertificate);
 
 // @route   GET /api/certificates/admin/all
 router.get("/admin/all", protect, adminOnly, getAllCertificates);
