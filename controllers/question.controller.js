@@ -161,6 +161,19 @@ const bulkUploadQuestions = async (req, res) => {
             return res.status(400).json({ message: "File is empty or has no valid rows" });
         }
 
+        // Load existing question text for this course+type so re-uploading
+        // the same file (or a file with overlapping rows) doesn't silently
+        // create duplicates — mirrors the duplicate check already used on
+        // the AI-generation and AI-approval paths.
+        const existingQuestions = await Question.find(
+            { course: courseId, type, isActive: true },
+            { question: 1 }
+        );
+        const existingSet = new Set(
+            existingQuestions.map(q => q.question.trim().toLowerCase())
+        );
+        const seenInBatch = new Set();
+
         const validQuestions = [];
         const skippedRows = [];
 
@@ -185,16 +198,23 @@ const bulkUploadQuestions = async (req, res) => {
                 return;
             }
 
+            const normalized = question.toLowerCase();
+            if (existingSet.has(normalized) || seenInBatch.has(normalized)) {
+                skippedRows.push(`Row ${rowNum}: Duplicate question — already exists, skipped`);
+                return;
+            }
+            seenInBatch.add(normalized);
+
             validQuestions.push({
                 course: courseId,
-                question,
-                optionA,
-                optionB,
-                optionC,
-                optionD,
+                question: stripHtml(question),
+                optionA: stripHtml(optionA),
+                optionB: stripHtml(optionB),
+                optionC: stripHtml(optionC),
+                optionD: stripHtml(optionD),
                 correctAnswer,
                 type,
-                explanation: explanation || null
+                explanation: explanation ? stripHtml(explanation) : null
             });
         });
 
