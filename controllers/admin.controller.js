@@ -3,6 +3,7 @@ const Course = require("../models/Course");
 const Category = require("../models/Category");
 const Question = require("../models/Question");
 const Certificate = require("../models/Certificate");
+const { stripHtml } = require("../utils/sanitize");
 
 const { uploadToCloudinary } = require("../config/cloudinary");
 const cloudinary = require("cloudinary").v2;
@@ -629,15 +630,15 @@ const saveApprovedQuestions = async (req, res) => {
             .filter(r => !r.isDuplicate)
             .map(r => ({
                 course: courseId,
-                question: r.question.question.trim(),
-                optionA: r.question.optionA.trim(),
-                optionB: r.question.optionB.trim(),
-                optionC: r.question.optionC.trim(),
-                optionD: r.question.optionD.trim(),
+                question: stripHtml(r.question.question.trim()),
+                optionA: stripHtml(r.question.optionA.trim()),
+                optionB: stripHtml(r.question.optionB.trim()),
+                optionC: stripHtml(r.question.optionC.trim()),
+                optionD: stripHtml(r.question.optionD.trim()),
                 correctAnswer: r.question.correctAnswer,
                 type,
                 difficulty,
-                explanation: r.question.explanation ? r.question.explanation.trim() : null,
+                explanation: r.question.explanation ? stripHtml(r.question.explanation.trim()) : null,
                 isActive: true,
                 createdByAI: true,
                 isApproved: true,
