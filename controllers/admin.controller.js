@@ -2,6 +2,8 @@ const User = require("../models/User");
 const Course = require("../models/Course");
 const Category = require("../models/Category");
 const Question = require("../models/Question");
+const Certificate = require("../models/Certificate");
+
 const { uploadToCloudinary } = require("../config/cloudinary");
 const cloudinary = require("cloudinary").v2;
 const Cache = require("../utils/cache");
@@ -67,15 +69,17 @@ const deleteUser = async (req, res) => {
             return res.status(403).json({ message: "Cannot delete admin" });
         }
 
-        await User.findByIdAndDelete(req.params.id);
+        // Certificates are meant to stay publicly verifiable indefinitely.
+        // Deleting a user who has issued certificates would break
+        // verification for anyone checking those credentials later.
+        const certCount = await Certificate.countDocuments({ user: req.params.id });
+        if (certCount > 0) {
+            return res.status(400).json({
+                message: `Cannot delete — this user has ${certCount} issued certificate${certCount > 1 ? "s" : ""}. Removing them would break certificate verification for those credentials.`
+            });
+        }
 
-        Cache.invalidate("admin:stats"); // user count changed
-        res.status(200).json({ message: "User deleted successfully" });
-    } catch (error) {
-        console.error("Delete user error:", error);
-        res.status(500).json({ message: "Failed to delete user." });
-    }
-};
+        await User.findByIdAndDelete(req.params.id);
 
 
 // ── GET ALL COURSES (ADMIN) ──
