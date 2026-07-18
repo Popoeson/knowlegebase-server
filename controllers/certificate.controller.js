@@ -263,15 +263,38 @@ const generateCertificate = async (req, res) => {
             if (!exists) isUnique = true;
         }
 
-        const certificate = await Certificate.create({
-            user: userId,
-            course: course._id,
-            examAttempt: attemptId,
-            certificateId,
-            issuedAt: new Date()
-        });
+        let certificate;
+        try {
+            certificate = await Certificate.create({
+                user: userId,
+                course: course._id,
+                examAttempt: attemptId,
+                certificateId,
+                issuedAt: new Date()
+            });
+        } catch (createErr) {
+            // Duplicate key on the unique examAttempt index means a
+            // concurrent request (e.g. a double-click) already created
+            // this certificate first. Return that one instead of doing a
+            // second expensive Puppeteer render + Cloudinary upload.
+            if (createErr.code === 11000) {
+                const already = await Certificate.findOne({
+                    examAttempt: attemptId,
+                    user: userId
+                }).populate("course", "title");
+
+                if (already) {
+                    return res.status(200).json({
+                        message: "Certificate already exists",
+                        certificate: already
+                    });
+                }
+            }
+            throw createErr;
+        }
 
         const pdfBuffer = await generateCertificatePDF(user, course, certificate);
+
 
         const uploadResult = await uploadToCloudinary(pdfBuffer, {
             folder: "knowledgebase/certificates",
