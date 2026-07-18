@@ -250,6 +250,17 @@ const deleteCourse = async (req, res) => {
         const course = await Course.findById(req.params.id);
         if (!course) return res.status(404).json({ message: "Course not found" });
 
+        // Certificates are meant to stay publicly verifiable indefinitely.
+        // Hard-deleting a course that has issued certificates would break
+        // verification for everyone who earned one. Use the toggle
+        // (deactivate) endpoint instead for courses with certificate history.
+        const certCount = await Certificate.countDocuments({ course: req.params.id });
+        if (certCount > 0) {
+            return res.status(400).json({
+                message: `Cannot delete — ${certCount} certificate${certCount > 1 ? "s have" : " has"} been issued for this course. Deactivate it instead to keep those certificates verifiable.`
+            });
+        }
+
         // Remove dependent questions
         await Question.deleteMany({ course: req.params.id });
 
