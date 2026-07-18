@@ -200,6 +200,20 @@ const editCourse = async (req, res) => {
         }
 
         if (req.file) {
+            // Clean up the old thumbnail before replacing it, so replaced
+            // images don't pile up as orphaned storage in Cloudinary.
+            if (course.thumbnail) {
+                const oldPublicId = getCloudinaryPublicId(course.thumbnail);
+                if (oldPublicId) {
+                    try {
+                        await cloudinary.uploader.destroy(oldPublicId);
+                    } catch (err) {
+                        console.error("Cloudinary old-thumbnail delete error:", err.message);
+                        // Don't block the course update if cleanup fails
+                    }
+                }
+            }
+
             const result = await uploadToCloudinary(req.file.buffer, {
                 folder: "knowledgebase/courses"
             });
