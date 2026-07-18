@@ -1,6 +1,7 @@
 const Question = require("../models/Question");
 const Course = require("../models/Course");
 const xlsx = require("xlsx");
+const { stripHtml } = require("../utils/sanitize");
 
 // ── GET QUESTIONS BY COURSE (ADMIN) ──
 const getQuestions = async (req, res) => {
@@ -52,14 +53,14 @@ const addQuestion = async (req, res) => {
 
         const newQuestion = await Question.create({
             course,
-            question,
-            optionA,
-            optionB,
-            optionC,
-            optionD,
+            question: stripHtml(question),
+            optionA: stripHtml(optionA),
+            optionB: stripHtml(optionB),
+            optionC: stripHtml(optionC),
+            optionD: stripHtml(optionD),
             correctAnswer: correctAnswer.toUpperCase(),
             type,
-            explanation: explanation || null
+            explanation: explanation ? stripHtml(explanation) : null
         });
 
         res.status(201).json({
