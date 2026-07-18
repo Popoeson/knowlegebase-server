@@ -81,6 +81,15 @@ const deleteUser = async (req, res) => {
 
         await User.findByIdAndDelete(req.params.id);
 
+        Cache.invalidate("admin:stats"); // user count changed
+        res.status(200).json({ message: "User deleted successfully" });
+    } catch (error) {
+        console.error("Delete user error:", error);
+        res.status(500).json({ message: "Failed to delete user." });
+    }
+};
+
+
 
 // ── GET ALL COURSES (ADMIN) ──
 const getAllCourses = async (req, res) => {
