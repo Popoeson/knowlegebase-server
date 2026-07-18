@@ -38,6 +38,8 @@ const {
     bulkDeleteTransactions
 } = require("../controllers/payment.controller");
 
+const { aiGenerateLimiter } = require("../middleware/rateLimit.middleware");
+
 const {
     getAllCertificates,
     revokeCertificate
@@ -77,7 +79,7 @@ router.delete("/questions/:id", deleteQuestion);
 
 // ── AI QUESTION GENERATION ──
 // Order matters: specific paths must come before parameterised ones
-router.post("/questions/ai-generate", generateQuestionsWithAI);
+router.post("/questions/ai-generate", aiGenerateLimiter, generateQuestionsWithAI);
 router.post("/questions/ai-save", saveApprovedQuestions);
 router.post("/questions/ai-reject", rejectAIQuestions);
 
