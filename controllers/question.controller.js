@@ -93,14 +93,14 @@ const editQuestion = async (req, res) => {
             return res.status(404).json({ message: "Question not found" });
         }
 
-        if (question) existing.question = question;
-        if (optionA) existing.optionA = optionA;
-        if (optionB) existing.optionB = optionB;
-        if (optionC) existing.optionC = optionC;
-        if (optionD) existing.optionD = optionD;
+        if (question) existing.question = stripHtml(question);
+        if (optionA) existing.optionA = stripHtml(optionA);
+        if (optionB) existing.optionB = stripHtml(optionB);
+        if (optionC) existing.optionC = stripHtml(optionC);
+        if (optionD) existing.optionD = stripHtml(optionD);
         if (correctAnswer) existing.correctAnswer = correctAnswer.toUpperCase();
         if (type) existing.type = type;
-        if (explanation !== undefined) existing.explanation = explanation;
+        if (explanation !== undefined) existing.explanation = stripHtml(explanation);
 
         await existing.save();
 
