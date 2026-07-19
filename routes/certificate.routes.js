@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { protect, adminOnly } = require("../middleware/auth.middleware");
-const { moderateLimiter } = require("../middleware/rateLimit.middleware");
+const { moderateLimiter, adminActionLimiter } = require("../middleware/rateLimit.middleware");
 const {
     generateCertificate,
     getUserCertificates,
@@ -19,10 +19,10 @@ router.post("/generate", protect, moderateLimiter, generateCertificate);
 router.get("/verify/:certificateId", moderateLimiter, verifyCertificate);
 
 // @route   GET /api/certificates/admin/all
-router.get("/admin/all", protect, adminOnly, getAllCertificates);
+router.get("/admin/all", protect, adminOnly, adminActionLimiter, getAllCertificates);
 
 // @route   PATCH /api/certificates/admin/:id/revoke
-router.patch("/admin/:id/revoke", protect, adminOnly, revokeCertificate);
+router.patch("/admin/:id/revoke", protect, adminOnly, adminActionLimiter, revokeCertificate);
 
 // @route   GET /api/certificates
 router.get("/", protect, getUserCertificates);
