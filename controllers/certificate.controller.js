@@ -270,7 +270,9 @@ const generateCertificate = async (req, res) => {
                 course: course._id,
                 examAttempt: attemptId,
                 certificateId,
-                issuedAt: new Date()
+                issuedAt: new Date(),
+                userFullNameSnapshot: user.fullName,
+                courseTitleSnapshot: course.title
             });
         } catch (createErr) {
             // Duplicate key on the unique examAttempt index means a
