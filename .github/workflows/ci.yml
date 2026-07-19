@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [staging, main]
+  pull_request:
+    branches: [main, staging]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      # Dummy values only — this job never connects to a real database or
+      # external API. They exist purely so modules that read process.env
+      # at import time (e.g. the Groq client) don't throw during the
+      # require-check below.
+      MONGO_URI: mongodb://localhost:27017/ci-placeholder
+      JWT_SECRET: ci-placeholder-secret
+      JWT_EXPIRES_IN: 7d
+      PAYSTACK_SECRET_KEY: sk_test_placeholder
+      PAYSTACK_PUBLIC_KEY: pk_test_placeholder
+      BREVO_API_KEY: placeholder
+      CLOUDINARY_CLOUD_NAME: placeholder
+      CLOUDINARY_API_KEY: placeholder
+      CLOUDINARY_API_SECRET: placeholder
+      CLIENT_URL: http://localhost:3000
+      GROQ_API_KEY: placeholder
+      REGISTRATION_FEE_USD: "0.5"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Syntax check all JavaScript files
+        run: find . -name "*.js" -not -path "./node_modules/*" -print0 | xargs -0 -n1 node --check
+
+      - name: Verify every route file's imports resolve
+        run: node scripts/verify-requires.js
+
+      - name: Dependency audit (report only, does not fail the build)
+        run: npm audit --audit-level=critical || true
