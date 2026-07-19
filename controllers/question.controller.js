@@ -205,9 +205,10 @@ const bulkUploadQuestions = async (req, res) => {
             }
             seenInBatch.add(normalized);
 
-            validQuestions.push({
+validQuestions.push({
                 course: courseId,
                 question: stripHtml(question),
+                questionNormalized: normalized,
                 optionA: stripHtml(optionA),
                 optionB: stripHtml(optionB),
                 optionC: stripHtml(optionC),
