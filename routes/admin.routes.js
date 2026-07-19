@@ -46,8 +46,12 @@ const {
     revokeCertificate
 } = require("../controllers/certificate.controller");
 
-// All admin routes are protected
-router.use(protect, adminOnly);
+const { adminActionLimiter } = require("../middleware/rateLimit.middleware");
+
+// All admin routes are protected, and rate-limited as a group — caps how
+// much damage a stolen/leaked admin token can do per window, without
+// getting in the way of legitimate bulk admin work.
+router.use(protect, adminOnly, adminActionLimiter);
 
 // ── DASHBOARD ──
 router.get("/stats", getDashboardStats);
