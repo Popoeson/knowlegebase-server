@@ -3,6 +3,7 @@ const router = express.Router();
 const { protect, adminOnly } = require("../middleware/auth.middleware");
 const upload = require("../middleware/upload.middleware");
 const excelUpload = require("../middleware/excel.middleware");
+const { verifyImageSignature, verifyExcelSignature } = require("../middleware/verifyFileSignature.middleware");
 
 const {
     getDashboardStats,
@@ -57,8 +58,8 @@ router.delete("/users/:id", deleteUser);
 
 // ── COURSES ──
 router.get("/courses", getAllCourses);
-router.post("/courses", upload.single("thumbnail"), createCourse);
-router.put("/courses/:id", upload.single("thumbnail"), editCourse);
+router.post("/courses", upload.single("thumbnail"), verifyImageSignature, createCourse);
+router.put("/courses/:id", upload.single("thumbnail"), verifyImageSignature, editCourse);
 router.patch("/courses/:id/toggle", toggleCourseStatus);
 router.delete("/courses/:id", deleteCourse);
 
@@ -72,7 +73,7 @@ router.delete("/categories/:id", deleteCategory);
 router.get("/questions", getQuestions);
 router.post("/questions", addQuestion);
 router.put("/questions/:id", editQuestion);
-router.post("/questions/bulk-upload", excelUpload.single("file"), bulkUploadQuestions);
+router.post("/questions/bulk-upload", excelUpload.single("file"), verifyExcelSignature, bulkUploadQuestions);
 router.get("/questions/template", downloadTemplate);
 router.delete("/questions/bulk-delete", bulkDeleteQuestions);   
 router.delete("/questions/:id", deleteQuestion);  
