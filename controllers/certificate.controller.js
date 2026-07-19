@@ -385,12 +385,20 @@ const verifyCertificate = async (req, res) => {
             year: "numeric"
         });
 
+        const fullName = certificate.user
+            ? `${certificate.user.firstName}${certificate.user.otherName ? " " + certificate.user.otherName : ""} ${certificate.user.surname}`
+            : (certificate.userFullNameSnapshot || "Unknown");
+
+        const courseTitle = certificate.course
+            ? certificate.course.title
+            : (certificate.courseTitleSnapshot || "Unknown course");
+
         res.status(200).json({
             valid: certificate.status === "active",
             status: certificate.status,
             certificateId: certificate.certificateId,
-            fullName: `${certificate.user.firstName}${certificate.user.otherName ? " " + certificate.user.otherName : ""} ${certificate.user.surname}`,
-            course: certificate.course.title,
+            fullName,
+            course: courseTitle,
             issuedAt: issuedDate,
             message: certificate.status === "active"
                 ? "This certificate is valid and authentic"
