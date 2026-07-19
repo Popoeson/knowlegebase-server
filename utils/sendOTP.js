@@ -11,9 +11,9 @@ const LOGO_URL = "https://www.asodem.com/asset/images/logo3.png";
 
 const sendEmail = (to, toName, subject, htmlContent) => {
     return new Promise((resolve, reject) => {
-        const payload = JSON.stringify({
+    const payload = JSON.stringify({
             sender: {
-                email: process.env.EMAIL_USER,
+                email: "support@asodem.com",
                 name: "ASODEM"
             },
             to: [{ email: to, name: toName }],
