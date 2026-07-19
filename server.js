@@ -1,4 +1,5 @@
-require("dotenv").config();
+require("./instrument");
+
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -7,8 +8,6 @@ const Sentry = require("@sentry/node");
 const connectDB = require("./config/db");
 
 // ── BOOT-TIME ENV VALIDATION ──
-// New Render services start with zero env vars. Fail loud at boot instead
-// of limping along and surfacing 500s on real user requests later.
 const REQUIRED_ENV_VARS = [
     "MONGO_URI",
     "JWT_SECRET",
@@ -46,25 +45,10 @@ const errorMonitorRoutes = require("./routes/errorMonitor.routes");
 
 const app = express();
 
-// Must initialize before any other middleware so Sentry can capture
-// errors from everything downstream, including request context (route,
-// method, headers) attached automatically to each error.
-Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV || "development",
-    tracesSampleRate: 0.1 // captures 10% of requests for performance data, keeps free-tier quota healthy
-});
-
 connectDB();
 
 app.use(helmet());
 
-// Allowed origin(s) come entirely from the CLIENT_URL env var on each
-// Render service — production and staging each set their own value, so
-// this same code allows only the correct frontend on each deployment.
-// Supports a comma-separated list in case staging ever needs to allow
-// more than one frontend URL (e.g. both a bare .vercel.app domain and a
-// git-branch preview URL).
 const allowedOrigins = (process.env.CLIENT_URL || "")
     .split(",")
     .map(url => url.trim())
@@ -82,9 +66,6 @@ app.use(cors({
     credentials: true
 }));
 
-// Capture raw body alongside parsed JSON so the Paystack webhook can
-// verify the HMAC signature against the exact bytes Paystack sent —
-// signature verification fails against a re-serialized JSON.parse() output.
 app.use(express.json({
     verify: (req, res, buf) => {
         req.rawBody = buf;
@@ -92,11 +73,6 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true }));
 
-// Strips any request key starting with "$" or containing "." from
-// req.body, req.query, and req.params before it reaches a controller —
-// closes NoSQL operator-injection (e.g. ?courseId[$ne]=null) at the
-// framework level instead of relying on every controller to type-check
-// every field individually.
 app.use(mongoSanitize());
 
 app.get("/", (req, res) => {
@@ -120,9 +96,6 @@ app.use((req, res) => {
     res.status(404).json({ message: "Route not found" });
 });
 
-// Sentry's own error handler must be registered before your final custom
-// one, so it captures the error first, then hands off to your existing
-// response logic unchanged.
 Sentry.setupExpressErrorHandler(app);
 
 app.use((err, req, res, next) => {
