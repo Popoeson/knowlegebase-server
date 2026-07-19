@@ -621,7 +621,7 @@ const saveApprovedQuestions = async (req, res) => {
                 const exists = await Question.findOne({
                     course: courseId,
                     type: type,
-                    question: { $regex: new RegExp(`^${q.question.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }
+                    questionNormalized: q.question.trim().toLowerCase()
                 });
                 return { question: q, isDuplicate: !!exists };
             })
