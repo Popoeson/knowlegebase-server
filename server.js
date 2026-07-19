@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
+const mongoSanitize = require("express-mongo-sanitize");
 const connectDB = require("./config/db");
 
 // ── BOOT-TIME ENV VALIDATION ──
@@ -64,6 +65,13 @@ app.use(express.json({
     }
 }));
 app.use(express.urlencoded({ extended: true }));
+
+// Strips any request key starting with "$" or containing "." from
+// req.body, req.query, and req.params before it reaches a controller —
+// closes NoSQL operator-injection (e.g. ?courseId[$ne]=null) at the
+// framework level instead of relying on every controller to type-check
+// every field individually.
+app.use(mongoSanitize());
 
 app.get("/", (req, res) => {
     res.json({ message: "ASODEM API is running" });
