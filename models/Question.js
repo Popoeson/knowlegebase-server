@@ -72,12 +72,34 @@ const questionSchema = new mongoose.Schema(
         approvedAt: {
             type: Date,
             default: null
+        },
+        // Lowercased, trimmed copy of `question`, kept in sync automatically
+        // (see pre-save hook below). Duplicate-detection queries match
+        // against this field with an exact string comparison instead of a
+        // case-insensitive regex — regexes with the /i flag can't use a
+        // standard index for the text portion, so as question banks grow
+        // (especially via AI generation) those checks would otherwise get
+        // slower per question added, scanning every question in the course
+        // instead of doing a direct indexed lookup.
+        questionNormalized: {
+            type: String,
+            default: null
         }
     },
     { timestamps: true }
 );
 
-// Compound index for duplicate detection scoped to a course
-questionSchema.index({ course: 1, question: 1 });
+questionSchema.pre("save", function (next) {
+    if (this.isModified("question")) {
+        this.questionNormalized = this.question.trim().toLowerCase();
+    }
+    next();
+});
+
+// Note: this hook only fires on .create()/.save() — insertMany() calls
+// (bulk upload, AI-approved batch save) must set questionNormalized
+// explicitly themselves. Both call sites already do this — see
+// question.controller.js and admin.controller.js.
+questionSchema.index({ course: 1, type: 1, questionNormalized: 1 });
 
 module.exports = mongoose.model("Question", questionSchema);
