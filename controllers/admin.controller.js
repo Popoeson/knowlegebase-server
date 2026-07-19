@@ -632,6 +632,7 @@ const saveApprovedQuestions = async (req, res) => {
             .map(r => ({
                 course: courseId,
                 question: stripHtml(r.question.question.trim()),
+                questionNormalized: r.question.question.trim().toLowerCase(),
                 optionA: stripHtml(r.question.optionA.trim()),
                 optionB: stripHtml(r.question.optionB.trim()),
                 optionC: stripHtml(r.question.optionC.trim()),
