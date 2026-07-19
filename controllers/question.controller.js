@@ -220,8 +220,13 @@ validQuestions.push({
         });
 
         if (validQuestions.length === 0) {
+            const allDuplicates = skippedRows.length > 0 &&
+                skippedRows.every(row => row.includes("Duplicate question"));
+
             return res.status(400).json({
-                message: "No valid questions found in file",
+                message: allDuplicates
+                    ? "All questions in this file already exist for this course — nothing new to upload."
+                    : "No valid questions found in file",
                 skippedRows
             });
         }
