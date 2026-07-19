@@ -7,7 +7,7 @@ const upload = require("../middleware/upload.middleware");
 const { verifyImageSignature } = require("../middleware/verifyFileSignature.middleware");
 
 router.get("/profile", protect, getProfile);
-router.put("/profile", protect, upload.single("profilePhoto"), verifyImageSignature, updateProfile);
+router.put("/profile", protect, upload.single("profilePhoto"), verifyImageSignature, moderateLimiter, updateProfile);
 router.put("/change-password", protect, moderateLimiter, changePassword);
 router.get("/stats", protect, getUserStats);
 
