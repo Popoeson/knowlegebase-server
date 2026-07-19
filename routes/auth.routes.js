@@ -11,7 +11,13 @@ const {
 } = require("../controllers/auth.controller");
 
 const { protectUnpaid } = require("../middleware/auth.middleware");
-const { authLimiter, otpLimiter, paymentLimiter } = require("../middleware/rateLimit.middleware");
+const {
+    authLimiter,
+    otpLimiter,
+    paymentLimiter,
+    loginAccountLimiter,
+    paymentVerifyLimiter
+} = require("../middleware/rateLimit.middleware");
 
 const {
     initializeRegistrationPayment,
@@ -21,15 +27,13 @@ const {
 router.post("/register", authLimiter, register);
 router.post("/verify-otp", authLimiter, verifyOTP);
 router.post("/resend-otp", otpLimiter, resendOTP);
-router.post("/login", authLimiter, login);
+router.post("/login", authLimiter, loginAccountLimiter, login);
 router.post("/forgot-password", otpLimiter, forgotPassword);
 router.post("/reset-password", authLimiter, resetPassword);
 
-// @route   GET /api/auth/me
 router.get("/me", protectUnpaid, me);
 
-// Registration payment
 router.post("/registration-payment/initialize", protectUnpaid, paymentLimiter, initializeRegistrationPayment);
-router.get("/registration-payment/verify/:reference", protectUnpaid, verifyRegistrationPayment);
+router.get("/registration-payment/verify/:reference", protectUnpaid, paymentVerifyLimiter, verifyRegistrationPayment);
 
 module.exports = router;
