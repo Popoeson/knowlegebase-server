@@ -313,6 +313,11 @@ const generateCertificate = async (req, res) => {
 
         await certificate.populate("course", "title");
 
+        await logActivity({
+            user: userId, email: user.email, event: "certificate_generated",
+            metadata: { courseId: course._id, courseTitle: course.title, certificateId }, req
+        });
+
         res.status(201).json({
             message: "Certificate generated successfully",
             certificate
