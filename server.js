@@ -43,6 +43,7 @@ const paymentRoutes = require("./routes/payment.routes");
 const certificateRoutes = require("./routes/certificate.routes");
 const errorMonitorRoutes = require("./routes/errorMonitor.routes");
 const activityRoutes = require("./routes/activity.routes");
+const backupRoutes = require("./routes/backup.routes");
 
 const app = express();
 
@@ -93,6 +94,7 @@ app.use("/api/payment", paymentRoutes);
 app.use("/api/certificates", certificateRoutes);
 app.use("/api/error-monitor", errorMonitorRoutes);
 app.use("/api/activity", activityRoutes);
+app.use("/api/backup", backupRoutes);
 
 app.use((req, res) => {
     res.status(404).json({ message: "Route not found" });
