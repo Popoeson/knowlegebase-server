@@ -42,6 +42,7 @@ const examRoutes = require("./routes/exam.routes");
 const paymentRoutes = require("./routes/payment.routes");
 const certificateRoutes = require("./routes/certificate.routes");
 const errorMonitorRoutes = require("./routes/errorMonitor.routes");
+const activityRoutes = require("./routes/activity.routes");
 
 const app = express();
 
@@ -91,6 +92,7 @@ app.use("/api/exam", examRoutes);
 app.use("/api/payment", paymentRoutes);
 app.use("/api/certificates", certificateRoutes);
 app.use("/api/error-monitor", errorMonitorRoutes);
+app.use("/api/activity", activityRoutes);
 
 app.use((req, res) => {
     res.status(404).json({ message: "Route not found" });
