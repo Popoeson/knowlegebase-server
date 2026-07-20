@@ -3,6 +3,7 @@ const ExamAttempt = require("../models/ExamAttempt");
 const Question = require("../models/Question");
 const Course = require("../models/Course");
 const Payment = require("../models/Payment");
+const { logActivity } = require("../utils/activityLog");
 
 // ── HELPER: SHUFFLE ARRAY ──
 const shuffleArray = (array) => {
@@ -176,10 +177,16 @@ const startAttempt = async (req, res) => {
             throw createError;
         }
 
+        await logActivity({
+            user: userId, email: req.user.email, event: "exam_started",
+            metadata: { courseId, courseTitle: course.title, type, attemptId: attempt._id }, req
+        });
+
         res.status(201).json({
             message: "Exam started",
             attempt: {
                 _id: attempt._id,
+
                 questions: attemptQuestions.map(q => ({
                     _id: q.question,
                     question: q.questionText,
@@ -302,6 +309,17 @@ const submitAttempt = async (req, res) => {
         attempt.submittedAt = new Date();
         attempt.timeTaken = Math.floor(elapsed);
         await attempt.save();
+
+        if (attempt.type === "certification") {
+            const outcomeEvent = finalStatus === "timed-out"
+                ? "exam_timed_out"
+                : (passed ? "exam_passed" : "exam_failed");
+
+            await logActivity({
+                user: req.user._id, email: req.user.email, event: outcomeEvent,
+                metadata: { courseId: course._id, courseTitle: course.title, score, attemptId: attempt._id }, req
+            });
+        }
 
         res.status(200).json({
             message: "Exam submitted successfully",
