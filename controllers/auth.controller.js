@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const generateToken = require("../utils/generateToken");
 const { generateOTP, sendOTP, sendPasswordResetOTP } = require("../utils/sendOTP");
+const { logActivity } = require("../utils/activityLog");
 
 // ── REGISTER ──
 const register = async (req, res) => {
@@ -46,6 +47,8 @@ const register = async (req, res) => {
                 message: "Account created but we could not send your OTP. Please try again."
             });
         }
+
+        await logActivity({ user: user._id, email, event: "user_registered", req });
 
         res.status(201).json({
             message: "Registration successful. Please check your email for your OTP.",
@@ -124,6 +127,8 @@ const resendOTP = async (req, res) => {
 
         await sendOTP(email, user.fullName, otp);
 
+        await logActivity({ user: user._id, email, event: "otp_resent", req });
+
         res.status(200).json({ message: "A new OTP has been sent to your email." });
 
     } catch (error) {
@@ -143,15 +148,18 @@ const login = async (req, res) => {
 
         const user = await User.findOne({ email });
         if (!user) {
+            await logActivity({ email, event: "login_failed", metadata: { reason: "no_such_user" }, req });
             return res.status(401).json({ message: "Invalid email or password" });
         }
 
         const isMatch = await user.comparePassword(password);
         if (!isMatch) {
+            await logActivity({ user: user._id, email, event: "login_failed", metadata: { reason: "wrong_password" }, req });
             return res.status(401).json({ message: "Invalid email or password" });
         }
 
         if (!user.isVerified) {
+            await logActivity({ user: user._id, email, event: "login_failed", metadata: { reason: "unverified" }, req });
             return res.status(401).json({
                 message: "Please verify your email before logging in.",
                 needsVerification: true,
@@ -160,6 +168,8 @@ const login = async (req, res) => {
         }
 
         const token = generateToken(user._id, user.role);
+
+        await logActivity({ user: user._id, email, event: "login_success", req });
 
         res.status(200).json({
             message: "Login successful",
@@ -207,6 +217,8 @@ const forgotPassword = async (req, res) => {
 
         await sendPasswordResetOTP(email, user.fullName, otp);
 
+        await logActivity({ user: user._id, email, event: "password_reset_requested", req });
+
         res.status(200).json({
             message: "If an account exists with this email, an OTP has been sent.",
             email
@@ -252,6 +264,8 @@ const resetPassword = async (req, res) => {
         user.otp = null;
         user.otpExpires = null;
         await user.save();
+
+        await logActivity({ user: user._id, email, event: "password_reset_completed", req });
 
         res.status(200).json({ message: "Password reset successful. You can now log in." });
 
