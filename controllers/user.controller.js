@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const { uploadToCloudinary } = require("../config/cloudinary");
 const cloudinary = require("cloudinary").v2;
+const { logActivity } = require("../utils/activityLog");
 
 // Extract Cloudinary public_id from a secure_url — same logic used for
 // course thumbnails, duplicated locally to avoid a cross-controller import
@@ -124,6 +125,8 @@ const changePassword = async (req, res) => {
 
         user.password = newPassword;
         await user.save();
+
+        await logActivity({ user: user._id, email: user.email, event: "password_changed", req });
 
         res.status(200).json({ message: "Password changed successfully" });
 
