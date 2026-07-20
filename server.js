@@ -83,14 +83,6 @@ app.get("/health", (req, res) => {
     res.status(200).json({ status: "ok" });
 });
 
-
-// TEMPORARY — deliberate test error for confirming the Sentry pipeline
-// end-to-end. Remove this route once the error monitor page has been
-// verified to show it correctly.
-app.get("/test-error", (req, res) => {
-    throw new Error("Deliberate test error — MongoDB connection buffering timed out");
-});
-
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/courses", courseRoutes);
