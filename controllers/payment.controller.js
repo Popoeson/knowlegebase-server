@@ -1,6 +1,7 @@
 const https = require("https");
 const crypto = require("crypto");
 const Payment = require("../models/Payment");
+const { logActivity } = require("../utils/activityLog");
 const Course = require("../models/Course");
 const User = require("../models/User");
 const ExamAttempt = require("../models/ExamAttempt");
@@ -109,6 +110,11 @@ const initializeCertificatePayment = async (req, res) => {
             status: "pending"
         });
 
+        await logActivity({
+            user: user._id, email: user.email, event: "certificate_payment_initialized",
+            metadata: { courseId, courseTitle: course.title, amountNGN }, req
+        });
+
         res.status(200).json({
             message: "Exam payment initialized",
             reference,
@@ -183,10 +189,16 @@ const verifyCertificatePayment = async (req, res) => {
             payment.paidAt = new Date(transaction.paid_at);
             await payment.save();
 
+            await logActivity({
+                user: user._id, email: user.email, event: "certificate_payment_verified",
+                metadata: { courseId: payment.course, amount: payment.amount }, req
+            });
+
             return res.status(200).json({
                 message: "Payment verified successfully",
                 courseId: payment.course
             });
+
         } else {
             payment.status = "failed";
             await payment.save();
@@ -251,6 +263,11 @@ const initializeRegistrationPayment = async (req, res) => {
             amount: amountKobo,
             currency: "NGN",
             status: "pending"
+        });
+
+        await logActivity({
+            user: user._id, email: user.email, event: "registration_payment_initialized",
+            metadata: { amountNGN }, req
         });
 
         res.status(200).json({
@@ -347,9 +364,14 @@ const verifyRegistrationPayment = async (req, res) => {
         payment.paidAt = new Date(transaction.paid_at);
         await payment.save();
 
-        await User.findByIdAndUpdate(user._id, {
+       await User.findByIdAndUpdate(user._id, {
             hasPaidRegistration: true,
             registrationPaymentRef: reference
+        });
+
+        await logActivity({
+            user: user._id, email: user.email, event: "registration_payment_verified",
+            metadata: { reference }, req
         });
 
         return res.status(200).json({
