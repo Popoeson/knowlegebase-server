@@ -4,6 +4,7 @@ const Course = require("../models/Course");
 const User = require("../models/User");
 const Payment = require("../models/Payment");
 const { uploadToCloudinary } = require("../config/cloudinary");
+const { logActivity } = require("../utils/activityLog");
 
 // Base64-embedded logo so Puppeteer never depends on an external network
 // fetch during PDF generation (Render's outbound access to arbitrary
