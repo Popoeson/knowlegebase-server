@@ -1,5 +1,7 @@
 const https = require("https");
+const crypto = require("crypto");
 const Payment = require("../models/Payment");
+const { logActivity } = require("../utils/activityLog");
 const Course = require("../models/Course");
 const User = require("../models/User");
 const ExamAttempt = require("../models/ExamAttempt");
@@ -108,6 +110,11 @@ const initializeCertificatePayment = async (req, res) => {
             status: "pending"
         });
 
+        await logActivity({
+            user: user._id, email: user.email, event: "certificate_payment_initialized",
+            metadata: { courseId, courseTitle: course.title, amountNGN }, req
+        });
+
         res.status(200).json({
             message: "Exam payment initialized",
             reference,
@@ -132,7 +139,7 @@ const verifyCertificatePayment = async (req, res) => {
             return res.status(400).json({ message: "Payment reference is required" });
         }
 
-        const payment = await Payment.findOne({ reference });
+        const payment = await Payment.findOne({ reference, type: "certificate" });
         if (!payment) {
             return res.status(404).json({ message: "Payment record not found" });
         }
@@ -170,16 +177,28 @@ const verifyCertificatePayment = async (req, res) => {
             });
         }
 
+        if (transaction.metadata?.type && transaction.metadata.type !== "certificate") {
+            return res.status(403).json({
+                message: "This payment reference is not an exam-fee payment."
+            });
+        }
+
         if (transaction.status === "success") {
             payment.status = "success";
             payment.channel = transaction.channel;
             payment.paidAt = new Date(transaction.paid_at);
             await payment.save();
 
+            await logActivity({
+                user: user._id, email: user.email, event: "certificate_payment_verified",
+                metadata: { courseId: payment.course, amount: payment.amount }, req
+            });
+
             return res.status(200).json({
                 message: "Payment verified successfully",
                 courseId: payment.course
             });
+
         } else {
             payment.status = "failed";
             await payment.save();
@@ -244,6 +263,11 @@ const initializeRegistrationPayment = async (req, res) => {
             amount: amountKobo,
             currency: "NGN",
             status: "pending"
+        });
+
+        await logActivity({
+            user: user._id, email: user.email, event: "registration_payment_initialized",
+            metadata: { amountNGN }, req
         });
 
         res.status(200).json({
@@ -340,9 +364,14 @@ const verifyRegistrationPayment = async (req, res) => {
         payment.paidAt = new Date(transaction.paid_at);
         await payment.save();
 
-        await User.findByIdAndUpdate(user._id, {
+       await User.findByIdAndUpdate(user._id, {
             hasPaidRegistration: true,
             registrationPaymentRef: reference
+        });
+
+        await logActivity({
+            user: user._id, email: user.email, event: "registration_payment_verified",
+            metadata: { reference }, req
         });
 
         return res.status(200).json({
@@ -430,6 +459,85 @@ const bulkDeleteTransactions = async (req, res) => {
     }
 };
 
+// ── PAYSTACK WEBHOOK ──
+// Server-authoritative confirmation, independent of the client ever
+// calling /verify. Covers the case where a user pays (especially via
+// async bank transfer) and never returns to the app — client-side verify
+// alone would leave that Payment stuck at "pending" forever.
+const paystackWebhook = async (req, res) => {
+    try {
+        const signature = req.headers["x-paystack-signature"];
+
+        if (!signature || !req.rawBody) {
+            return res.status(400).send("Missing signature or body");
+        }
+
+        const expectedHash = crypto
+            .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
+            .update(req.rawBody)
+            .digest("hex");
+
+        if (expectedHash !== signature) {
+            console.warn("Paystack webhook: signature mismatch, ignoring");
+            return res.status(401).send("Invalid signature");
+        }
+
+        // Acknowledge immediately — Paystack retries aggressively on non-2xx.
+        res.status(200).send("OK");
+
+        const event = req.body;
+        if (event.event !== "charge.success") return;
+
+        const transaction = event.data;
+        const reference = transaction.reference;
+
+        const payment = await Payment.findOne({ reference });
+        if (!payment) {
+            console.warn(`Webhook: no Payment record for reference ${reference}`);
+            return;
+        }
+
+        // Idempotent — if /verify already processed this, do nothing.
+        if (payment.status === "success") return;
+
+        const metaUserId = transaction.metadata?.userId;
+        if (!metaUserId || metaUserId !== payment.user.toString()) {
+            console.error(`Webhook: metadata.userId mismatch for reference ${reference}`);
+            return;
+        }
+
+        if (transaction.metadata?.type && transaction.metadata.type !== payment.type) {
+            console.error(`Webhook: metadata.type mismatch for reference ${reference}`);
+            return;
+        }
+
+        payment.status = "success";
+        payment.channel = transaction.channel;
+        payment.paidAt = new Date(transaction.paid_at);
+        await payment.save();
+
+        if (payment.type === "registration") {
+            const alreadyUsed = await User.findOne({
+                registrationPaymentRef: reference,
+                _id: { $ne: payment.user }
+            });
+            if (!alreadyUsed) {
+                await User.findByIdAndUpdate(payment.user, {
+                    hasPaidRegistration: true,
+                    registrationPaymentRef: reference
+                });
+            }
+        }
+        // type === "certificate": nothing further to do here — startAttempt
+        // finds it via status:"success", examAttempt:null when the user
+        // proceeds to take the exam.
+
+    } catch (error) {
+        console.error("Paystack webhook error:", error);
+        // Response already sent above; nothing more to do.
+    }
+};
+
 module.exports = {
     initializeCertificatePayment,
     verifyCertificatePayment,
@@ -438,5 +546,6 @@ module.exports = {
     getUserTransactions,
     getAllTransactions,
     deleteTransaction,
-    bulkDeleteTransactions
+    bulkDeleteTransactions,
+    paystackWebhook
 };

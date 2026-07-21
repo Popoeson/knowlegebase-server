@@ -1,5 +1,20 @@
 const User = require("../models/User");
 const { uploadToCloudinary } = require("../config/cloudinary");
+const cloudinary = require("cloudinary").v2;
+const { logActivity } = require("../utils/activityLog");
+
+// Extract Cloudinary public_id from a secure_url — same logic used for
+// course thumbnails, duplicated locally to avoid a cross-controller import
+// for one small helper.
+const getCloudinaryPublicId = (url) => {
+    try {
+        const afterUpload = url.split("/upload/")[1];
+        const withoutVersion = afterUpload.split("/").slice(1).join("/");
+        return withoutVersion.replace(/\.[^/.]+$/, "");
+    } catch (err) {
+        return null;
+    }
+};
 
 // ── GET PROFILE ──
 const getProfile = async (req, res) => {
@@ -30,12 +45,24 @@ const updateProfile = async (req, res) => {
             return res.status(404).json({ message: "User not found" });
         }
 
-        // Update fields
         if (phone !== undefined) user.phone = phone;
         if (bio !== undefined) user.bio = bio;
 
-        // Handle profile photo upload
         if (req.file) {
+            // Clean up the old photo before replacing it, so replaced
+            // profile photos don't pile up as orphaned storage in Cloudinary.
+            if (user.profilePhoto) {
+                const oldPublicId = getCloudinaryPublicId(user.profilePhoto);
+                if (oldPublicId) {
+                    try {
+                        await cloudinary.uploader.destroy(oldPublicId);
+                    } catch (err) {
+                        console.error("Cloudinary old-photo delete error:", err.message);
+                        // Don't block the profile update if cleanup fails
+                    }
+                }
+            }
+
             const result = await uploadToCloudinary(req.file.buffer, {
                 folder: "knowledgebase/profiles",
                 transformation: [
@@ -98,6 +125,8 @@ const changePassword = async (req, res) => {
 
         user.password = newPassword;
         await user.save();
+
+        await logActivity({ user: user._id, email: user.email, event: "password_changed", req });
 
         res.status(200).json({ message: "Password changed successfully" });
 

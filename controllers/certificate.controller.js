@@ -4,6 +4,7 @@ const Course = require("../models/Course");
 const User = require("../models/User");
 const Payment = require("../models/Payment");
 const { uploadToCloudinary } = require("../config/cloudinary");
+const { logActivity } = require("../utils/activityLog");
 
 // Base64-embedded logo so Puppeteer never depends on an external network
 // fetch during PDF generation (Render's outbound access to arbitrary
@@ -263,15 +264,40 @@ const generateCertificate = async (req, res) => {
             if (!exists) isUnique = true;
         }
 
-        const certificate = await Certificate.create({
-            user: userId,
-            course: course._id,
-            examAttempt: attemptId,
-            certificateId,
-            issuedAt: new Date()
-        });
+        let certificate;
+        try {
+            certificate = await Certificate.create({
+                user: userId,
+                course: course._id,
+                examAttempt: attemptId,
+                certificateId,
+                issuedAt: new Date(),
+                userFullNameSnapshot: user.fullName,
+                courseTitleSnapshot: course.title
+            });
+        } catch (createErr) {
+            // Duplicate key on the unique examAttempt index means a
+            // concurrent request (e.g. a double-click) already created
+            // this certificate first. Return that one instead of doing a
+            // second expensive Puppeteer render + Cloudinary upload.
+            if (createErr.code === 11000) {
+                const already = await Certificate.findOne({
+                    examAttempt: attemptId,
+                    user: userId
+                }).populate("course", "title");
+
+                if (already) {
+                    return res.status(200).json({
+                        message: "Certificate already exists",
+                        certificate: already
+                    });
+                }
+            }
+            throw createErr;
+        }
 
         const pdfBuffer = await generateCertificatePDF(user, course, certificate);
+
 
         const uploadResult = await uploadToCloudinary(pdfBuffer, {
             folder: "knowledgebase/certificates",
@@ -286,6 +312,11 @@ const generateCertificate = async (req, res) => {
         await certificate.save();
 
         await certificate.populate("course", "title");
+
+        await logActivity({
+            user: userId, email: user.email, event: "certificate_generated",
+            metadata: { courseId: course._id, courseTitle: course.title, certificateId }, req
+        });
 
         res.status(201).json({
             message: "Certificate generated successfully",
@@ -360,12 +391,20 @@ const verifyCertificate = async (req, res) => {
             year: "numeric"
         });
 
+        const fullName = certificate.user
+            ? `${certificate.user.firstName}${certificate.user.otherName ? " " + certificate.user.otherName : ""} ${certificate.user.surname}`
+            : (certificate.userFullNameSnapshot || "Unknown");
+
+        const courseTitle = certificate.course
+            ? certificate.course.title
+            : (certificate.courseTitleSnapshot || "Unknown course");
+
         res.status(200).json({
             valid: certificate.status === "active",
             status: certificate.status,
             certificateId: certificate.certificateId,
-            fullName: `${certificate.user.firstName}${certificate.user.otherName ? " " + certificate.user.otherName : ""} ${certificate.user.surname}`,
-            course: certificate.course.title,
+            fullName,
+            course: courseTitle,
             issuedAt: issuedDate,
             message: certificate.status === "active"
                 ? "This certificate is valid and authentic"

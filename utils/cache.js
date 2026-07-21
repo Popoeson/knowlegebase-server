@@ -40,6 +40,13 @@ const Cache = {
         Object.keys(store).forEach(key => {
             if (key.startsWith(prefix)) delete store[key];
         });
+    },
+
+    // Debug helper — total number of cached keys currently held in memory.
+    // Not used by any route today; useful for a future admin/health
+    // endpoint or manual inspection if memory usage ever looks off.
+    size() {
+        return Object.keys(store).length;
     }
 };
 

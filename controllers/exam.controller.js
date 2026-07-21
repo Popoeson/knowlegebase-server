@@ -1,7 +1,9 @@
+const mongoose = require("mongoose");
 const ExamAttempt = require("../models/ExamAttempt");
 const Question = require("../models/Question");
 const Course = require("../models/Course");
 const Payment = require("../models/Payment");
+const { logActivity } = require("../utils/activityLog");
 
 // ── HELPER: SHUFFLE ARRAY ──
 const shuffleArray = (array) => {
@@ -15,6 +17,9 @@ const shuffleArray = (array) => {
 
 // ── START ATTEMPT ──
 const startAttempt = async (req, res) => {
+    let claimedPayment = null;
+    let reservedAttemptId = null;
+
     try {
         const { courseId, type } = req.body;
         const userId = req.user._id;
@@ -68,8 +73,6 @@ const startAttempt = async (req, res) => {
                 });
             }
 
-            // Resuming an in-progress attempt — payment (if applicable) was
-            // already consumed when this attempt was created, so no re-check.
             return res.status(200).json({
                 message: "Resuming existing attempt",
                 attempt: {
@@ -90,32 +93,9 @@ const startAttempt = async (req, res) => {
             });
         }
 
-        // ── CERTIFICATION PAYMENT GATE ──
-        // A certification attempt requires a successful, unused certificate
-        // payment for this course. One payment = one sitting: it gets
-        // consumed (linked to this attempt) below and cannot be reused for
-        // a retry — a fresh payment is required if the user fails.
-        let paymentToConsume = null;
-
-        if (type === "certification") {
-            paymentToConsume = await Payment.findOne({
-                user: userId,
-                course: courseId,
-                type: "certificate",
-                status: "success",
-                examAttempt: null
-            });
-
-            if (!paymentToConsume) {
-                return res.status(402).json({
-                    message: "Payment required to take the certification exam for this course.",
-                    code: "EXAM_PAYMENT_REQUIRED",
-                    courseId
-                });
-            }
-        }
-
-        // Fetch questions from correct bank
+        // Fetch questions from correct bank BEFORE touching any payment —
+        // cheap validation first, so we don't claim a payment only to fail
+        // on question availability afterward.
         const allQuestions = await Question.find({
             course: courseId,
             type,
@@ -133,6 +113,38 @@ const startAttempt = async (req, res) => {
             });
         }
 
+        // ── CERTIFICATION PAYMENT GATE (ATOMIC CLAIM) ──
+        // Pre-generate the attempt's _id and atomically claim an unused
+        // payment by setting examAttempt to that id in one findOneAndUpdate.
+        // This closes a race where two concurrent /exam/start requests could
+        // both read the same unused payment before either wrote back,
+        // resulting in two exam attempts backed by a single payment (a free
+        // sitting). If findOneAndUpdate returns null, someone already
+        // claimed it — treat as unpaid.
+        if (type === "certification") {
+            reservedAttemptId = new mongoose.Types.ObjectId();
+
+            claimedPayment = await Payment.findOneAndUpdate(
+                {
+                    user: userId,
+                    course: courseId,
+                    type: "certificate",
+                    status: "success",
+                    examAttempt: null
+                },
+                { $set: { examAttempt: reservedAttemptId } },
+                { new: true }
+            );
+
+            if (!claimedPayment) {
+                return res.status(402).json({
+                    message: "Payment required to take the certification exam for this course.",
+                    code: "EXAM_PAYMENT_REQUIRED",
+                    courseId
+                });
+            }
+        }
+
         const selected = shuffleArray(allQuestions).slice(0, questionLimit);
 
         const attemptQuestions = selected.map(q => ({
@@ -146,26 +158,35 @@ const startAttempt = async (req, res) => {
             explanation: q.explanation
         }));
 
-        const attempt = await ExamAttempt.create({
-            user: userId,
-            course: courseId,
-            type,
-            questions: attemptQuestions,
-            startedAt: new Date()
-        });
-
-        // Consume the payment now that the attempt exists — this both marks
-        // it "used" (blocking reuse for a retry) and links it so
-        // certificate.controller.js can find it after a pass.
-        if (paymentToConsume) {
-            paymentToConsume.examAttempt = attempt._id;
-            await paymentToConsume.save();
+        let attempt;
+        try {
+            attempt = await ExamAttempt.create({
+                _id: reservedAttemptId || undefined,
+                user: userId,
+                course: courseId,
+                type,
+                questions: attemptQuestions,
+                startedAt: new Date()
+            });
+        } catch (createError) {
+            // Roll back the claim so the payment isn't permanently stranded
+            // if attempt creation fails for any reason.
+            if (claimedPayment) {
+                await Payment.findByIdAndUpdate(claimedPayment._id, { $set: { examAttempt: null } });
+            }
+            throw createError;
         }
+
+        await logActivity({
+            user: userId, email: req.user.email, event: "exam_started",
+            metadata: { courseId, courseTitle: course.title, type, attemptId: attempt._id }, req
+        });
 
         res.status(201).json({
             message: "Exam started",
             attempt: {
                 _id: attempt._id,
+
                 questions: attemptQuestions.map(q => ({
                     _id: q.question,
                     question: q.questionText,
@@ -288,6 +309,17 @@ const submitAttempt = async (req, res) => {
         attempt.submittedAt = new Date();
         attempt.timeTaken = Math.floor(elapsed);
         await attempt.save();
+
+        if (attempt.type === "certification") {
+            const outcomeEvent = finalStatus === "timed-out"
+                ? "exam_timed_out"
+                : (passed ? "exam_passed" : "exam_failed");
+
+            await logActivity({
+                user: req.user._id, email: req.user.email, event: outcomeEvent,
+                metadata: { courseId: course._id, courseTitle: course.title, score, attemptId: attempt._id }, req
+            });
+        }
 
         res.status(200).json({
             message: "Exam submitted successfully",

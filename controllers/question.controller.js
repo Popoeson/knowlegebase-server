@@ -1,6 +1,7 @@
 const Question = require("../models/Question");
 const Course = require("../models/Course");
 const xlsx = require("xlsx");
+const { stripHtml } = require("../utils/sanitize");
 
 // ── GET QUESTIONS BY COURSE (ADMIN) ──
 const getQuestions = async (req, res) => {
@@ -52,14 +53,14 @@ const addQuestion = async (req, res) => {
 
         const newQuestion = await Question.create({
             course,
-            question,
-            optionA,
-            optionB,
-            optionC,
-            optionD,
+            question: stripHtml(question),
+            optionA: stripHtml(optionA),
+            optionB: stripHtml(optionB),
+            optionC: stripHtml(optionC),
+            optionD: stripHtml(optionD),
             correctAnswer: correctAnswer.toUpperCase(),
             type,
-            explanation: explanation || null
+            explanation: explanation ? stripHtml(explanation) : null
         });
 
         res.status(201).json({
@@ -92,14 +93,14 @@ const editQuestion = async (req, res) => {
             return res.status(404).json({ message: "Question not found" });
         }
 
-        if (question) existing.question = question;
-        if (optionA) existing.optionA = optionA;
-        if (optionB) existing.optionB = optionB;
-        if (optionC) existing.optionC = optionC;
-        if (optionD) existing.optionD = optionD;
+        if (question) existing.question = stripHtml(question);
+        if (optionA) existing.optionA = stripHtml(optionA);
+        if (optionB) existing.optionB = stripHtml(optionB);
+        if (optionC) existing.optionC = stripHtml(optionC);
+        if (optionD) existing.optionD = stripHtml(optionD);
         if (correctAnswer) existing.correctAnswer = correctAnswer.toUpperCase();
         if (type) existing.type = type;
-        if (explanation !== undefined) existing.explanation = explanation;
+        if (explanation !== undefined) existing.explanation = stripHtml(explanation);
 
         await existing.save();
 
@@ -160,6 +161,19 @@ const bulkUploadQuestions = async (req, res) => {
             return res.status(400).json({ message: "File is empty or has no valid rows" });
         }
 
+        // Load existing question text for this course+type so re-uploading
+        // the same file (or a file with overlapping rows) doesn't silently
+        // create duplicates — mirrors the duplicate check already used on
+        // the AI-generation and AI-approval paths.
+        const existingQuestions = await Question.find(
+            { course: courseId, type, isActive: true },
+            { question: 1 }
+        );
+        const existingSet = new Set(
+            existingQuestions.map(q => q.question.trim().toLowerCase())
+        );
+        const seenInBatch = new Set();
+
         const validQuestions = [];
         const skippedRows = [];
 
@@ -184,22 +198,35 @@ const bulkUploadQuestions = async (req, res) => {
                 return;
             }
 
-            validQuestions.push({
+            const normalized = question.toLowerCase();
+            if (existingSet.has(normalized) || seenInBatch.has(normalized)) {
+                skippedRows.push(`Row ${rowNum}: Duplicate question — already exists, skipped`);
+                return;
+            }
+            seenInBatch.add(normalized);
+
+validQuestions.push({
                 course: courseId,
-                question,
-                optionA,
-                optionB,
-                optionC,
-                optionD,
+                question: stripHtml(question),
+                questionNormalized: normalized,
+                optionA: stripHtml(optionA),
+                optionB: stripHtml(optionB),
+                optionC: stripHtml(optionC),
+                optionD: stripHtml(optionD),
                 correctAnswer,
                 type,
-                explanation: explanation || null
+                explanation: explanation ? stripHtml(explanation) : null
             });
         });
 
         if (validQuestions.length === 0) {
+            const allDuplicates = skippedRows.length > 0 &&
+                skippedRows.every(row => row.includes("Duplicate question"));
+
             return res.status(400).json({
-                message: "No valid questions found in file",
+                message: allDuplicates
+                    ? "All questions in this file already exist for this course — nothing new to upload."
+                    : "No valid questions found in file",
                 skippedRows
             });
         }

@@ -10,27 +10,30 @@ const {
     me
 } = require("../controllers/auth.controller");
 
-const { protect, protectUnpaid } = require("../middleware/auth.middleware");
+const { protectUnpaid } = require("../middleware/auth.middleware");
+const {
+    authLimiter,
+    otpLimiter,
+    paymentLimiter,
+    loginAccountLimiter,
+    paymentVerifyLimiter
+} = require("../middleware/rateLimit.middleware");
 
 const {
     initializeRegistrationPayment,
     verifyRegistrationPayment
 } = require("../controllers/payment.controller");
 
-router.post("/register", register);
-router.post("/verify-otp", verifyOTP);
-router.post("/resend-otp", resendOTP);
-router.post("/login", login);
-router.post("/forgot-password", forgotPassword);
-router.post("/reset-password", resetPassword);
+router.post("/register", authLimiter, register);
+router.post("/verify-otp", authLimiter, verifyOTP);
+router.post("/resend-otp", otpLimiter, resendOTP);
+router.post("/login", authLimiter, loginAccountLimiter, login);
+router.post("/forgot-password", otpLimiter, forgotPassword);
+router.post("/reset-password", authLimiter, resetPassword);
 
-// @route   GET /api/auth/me
-// @desc    Restore session from persisted token — used by new tabs
-// @access  Token required (protectUnpaid so unpaid users can still restore)
 router.get("/me", protectUnpaid, me);
 
-// Registration payment
-router.post("/registration-payment/initialize", protectUnpaid, initializeRegistrationPayment);
-router.get("/registration-payment/verify/:reference", protectUnpaid, verifyRegistrationPayment);
+router.post("/registration-payment/initialize", protectUnpaid, paymentLimiter, initializeRegistrationPayment);
+router.get("/registration-payment/verify/:reference", protectUnpaid, paymentVerifyLimiter, verifyRegistrationPayment);
 
 module.exports = router;

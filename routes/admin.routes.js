@@ -3,6 +3,7 @@ const router = express.Router();
 const { protect, adminOnly } = require("../middleware/auth.middleware");
 const upload = require("../middleware/upload.middleware");
 const excelUpload = require("../middleware/excel.middleware");
+const { verifyImageSignature, verifyExcelSignature } = require("../middleware/verifyFileSignature.middleware");
 
 const {
     getDashboardStats,
@@ -38,13 +39,19 @@ const {
     bulkDeleteTransactions
 } = require("../controllers/payment.controller");
 
+const { aiGenerateLimiter } = require("../middleware/rateLimit.middleware");
+
 const {
     getAllCertificates,
     revokeCertificate
 } = require("../controllers/certificate.controller");
 
-// All admin routes are protected
-router.use(protect, adminOnly);
+const { adminActionLimiter } = require("../middleware/rateLimit.middleware");
+
+// All admin routes are protected, and rate-limited as a group — caps how
+// much damage a stolen/leaked admin token can do per window, without
+// getting in the way of legitimate bulk admin work.
+router.use(protect, adminOnly, adminActionLimiter);
 
 // ── DASHBOARD ──
 router.get("/stats", getDashboardStats);
@@ -55,8 +62,8 @@ router.delete("/users/:id", deleteUser);
 
 // ── COURSES ──
 router.get("/courses", getAllCourses);
-router.post("/courses", upload.single("thumbnail"), createCourse);
-router.put("/courses/:id", upload.single("thumbnail"), editCourse);
+router.post("/courses", upload.single("thumbnail"), verifyImageSignature, createCourse);
+router.put("/courses/:id", upload.single("thumbnail"), verifyImageSignature, editCourse);
 router.patch("/courses/:id/toggle", toggleCourseStatus);
 router.delete("/courses/:id", deleteCourse);
 
@@ -70,14 +77,14 @@ router.delete("/categories/:id", deleteCategory);
 router.get("/questions", getQuestions);
 router.post("/questions", addQuestion);
 router.put("/questions/:id", editQuestion);
-router.post("/questions/bulk-upload", excelUpload.single("file"), bulkUploadQuestions);
+router.post("/questions/bulk-upload", excelUpload.single("file"), verifyExcelSignature, bulkUploadQuestions);
 router.get("/questions/template", downloadTemplate);
 router.delete("/questions/bulk-delete", bulkDeleteQuestions);   
 router.delete("/questions/:id", deleteQuestion);  
 
 // ── AI QUESTION GENERATION ──
 // Order matters: specific paths must come before parameterised ones
-router.post("/questions/ai-generate", generateQuestionsWithAI);
+router.post("/questions/ai-generate", aiGenerateLimiter, generateQuestionsWithAI);
 router.post("/questions/ai-save", saveApprovedQuestions);
 router.post("/questions/ai-reject", rejectAIQuestions);
 

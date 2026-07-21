@@ -75,4 +75,12 @@ const examAttemptSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+// Serves the "existing in-progress attempt" lookup in startAttempt — runs
+// on every exam-start request, so this is a hot path.
+examAttemptSchema.index({ user: 1, course: 1, type: 1, status: 1 });
+
+// Serves the exam-history listing (getUserAttempts) — filters by user +
+// status, sorted by submittedAt.
+examAttemptSchema.index({ user: 1, status: 1, submittedAt: -1 });
+
 module.exports = mongoose.model("ExamAttempt", examAttemptSchema);

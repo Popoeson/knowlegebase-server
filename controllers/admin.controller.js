@@ -2,6 +2,9 @@ const User = require("../models/User");
 const Course = require("../models/Course");
 const Category = require("../models/Category");
 const Question = require("../models/Question");
+const Certificate = require("../models/Certificate");
+const { stripHtml } = require("../utils/sanitize");
+
 const { uploadToCloudinary } = require("../config/cloudinary");
 const cloudinary = require("cloudinary").v2;
 const Cache = require("../utils/cache");
@@ -67,6 +70,16 @@ const deleteUser = async (req, res) => {
             return res.status(403).json({ message: "Cannot delete admin" });
         }
 
+        // Certificates are meant to stay publicly verifiable indefinitely.
+        // Deleting a user who has issued certificates would break
+        // verification for anyone checking those credentials later.
+        const certCount = await Certificate.countDocuments({ user: req.params.id });
+        if (certCount > 0) {
+            return res.status(400).json({
+                message: `Cannot delete — this user has ${certCount} issued certificate${certCount > 1 ? "s" : ""}. Removing them would break certificate verification for those credentials.`
+            });
+        }
+
         await User.findByIdAndDelete(req.params.id);
 
         Cache.invalidate("admin:stats"); // user count changed
@@ -76,6 +89,7 @@ const deleteUser = async (req, res) => {
         res.status(500).json({ message: "Failed to delete user." });
     }
 };
+
 
 
 // ── GET ALL COURSES (ADMIN) ──
@@ -187,6 +201,20 @@ const editCourse = async (req, res) => {
         }
 
         if (req.file) {
+            // Clean up the old thumbnail before replacing it, so replaced
+            // images don't pile up as orphaned storage in Cloudinary.
+            if (course.thumbnail) {
+                const oldPublicId = getCloudinaryPublicId(course.thumbnail);
+                if (oldPublicId) {
+                    try {
+                        await cloudinary.uploader.destroy(oldPublicId);
+                    } catch (err) {
+                        console.error("Cloudinary old-thumbnail delete error:", err.message);
+                        // Don't block the course update if cleanup fails
+                    }
+                }
+            }
+
             const result = await uploadToCloudinary(req.file.buffer, {
                 folder: "knowledgebase/courses"
             });
@@ -245,6 +273,17 @@ const deleteCourse = async (req, res) => {
     try {
         const course = await Course.findById(req.params.id);
         if (!course) return res.status(404).json({ message: "Course not found" });
+
+        // Certificates are meant to stay publicly verifiable indefinitely.
+        // Hard-deleting a course that has issued certificates would break
+        // verification for everyone who earned one. Use the toggle
+        // (deactivate) endpoint instead for courses with certificate history.
+        const certCount = await Certificate.countDocuments({ course: req.params.id });
+        if (certCount > 0) {
+            return res.status(400).json({
+                message: `Cannot delete — ${certCount} certificate${certCount > 1 ? "s have" : " has"} been issued for this course. Deactivate it instead to keep those certificates verifiable.`
+            });
+        }
 
         // Remove dependent questions
         await Question.deleteMany({ course: req.params.id });
@@ -526,11 +565,12 @@ STRICT OUTPUT RULES:
         // Duplicate check scoped to course AND type
         const duplicateCheckResults = await Promise.all(
             validQuestions.map(async (q) => {
-           const exists = await Question.findOne({
-    course: courseId,
-    type: type,
-    question: { $regex: new RegExp(`^${q.question.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }
-});
+          const exists = await Question.findOne({
+                    course: courseId,
+                    type: type,
+                    questionNormalized: q.question.trim().toLowerCase()
+                });
+
                 return { question: q, isDuplicate: !!exists };
             })
         );
@@ -581,7 +621,7 @@ const saveApprovedQuestions = async (req, res) => {
                 const exists = await Question.findOne({
                     course: courseId,
                     type: type,
-                    question: { $regex: new RegExp(`^${q.question.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }
+                    questionNormalized: q.question.trim().toLowerCase()
                 });
                 return { question: q, isDuplicate: !!exists };
             })
@@ -591,15 +631,16 @@ const saveApprovedQuestions = async (req, res) => {
             .filter(r => !r.isDuplicate)
             .map(r => ({
                 course: courseId,
-                question: r.question.question.trim(),
-                optionA: r.question.optionA.trim(),
-                optionB: r.question.optionB.trim(),
-                optionC: r.question.optionC.trim(),
-                optionD: r.question.optionD.trim(),
+                question: stripHtml(r.question.question.trim()),
+                questionNormalized: r.question.question.trim().toLowerCase(),
+                optionA: stripHtml(r.question.optionA.trim()),
+                optionB: stripHtml(r.question.optionB.trim()),
+                optionC: stripHtml(r.question.optionC.trim()),
+                optionD: stripHtml(r.question.optionD.trim()),
                 correctAnswer: r.question.correctAnswer,
                 type,
                 difficulty,
-                explanation: r.question.explanation ? r.question.explanation.trim() : null,
+                explanation: r.question.explanation ? stripHtml(r.question.explanation.trim()) : null,
                 isActive: true,
                 createdByAI: true,
                 isApproved: true,
