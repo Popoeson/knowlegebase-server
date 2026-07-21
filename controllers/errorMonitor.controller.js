@@ -50,6 +50,12 @@ const getRecentErrors = async (req, res) => {
 
         const errors = result.body.map(issue => {
             const translation = translateError(issue.title, issue.metadata?.value);
+
+            // Sentry returns stats.14d as an array of [timestamp, count]
+            // pairs when statsPeriod is requested — used to draw a real
+            // trend line per issue instead of a fake/static one.
+            const trend = (issue.stats?.["14d"] || []).map(point => point[1]);
+
             return {
                 id: issue.id,
                 rawTitle: issue.title,
@@ -61,11 +67,25 @@ const getRecentErrors = async (req, res) => {
                 sentryUrl: issue.permalink,
                 plainTitle: translation.title,
                 plainExplanation: translation.explanation,
-                suggestion: translation.suggestion
+                suggestion: translation.suggestion,
+                trend
             };
         });
 
-        res.status(200).json({ errors, total: errors.length });
+        const criticalCount = errors.filter(e => e.level === "fatal" || e.level === "error").length;
+        const totalOccurrences = errors.reduce((sum, e) => sum + Number(e.count || 0), 0);
+        const totalUsersAffected = errors.reduce((sum, e) => sum + Number(e.userCount || 0), 0);
+
+        res.status(200).json({
+            errors,
+            total: errors.length,
+            summary: {
+                unresolved: errors.length,
+                occurrences: totalOccurrences,
+                usersAffected: totalUsersAffected,
+                critical: criticalCount
+            }
+        });
 
     } catch (error) {
         console.error("Get recent errors error:", error);
