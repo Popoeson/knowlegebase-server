@@ -1,3 +1,4 @@
+const archiver = require("archiver");
 const User = require("../models/User");
 const Course = require("../models/Course");
 const Category = require("../models/Category");
@@ -44,9 +45,15 @@ const getBackupStatus = async (req, res) => {
 // capture deletions — a document removed since the last backup simply
 // won't appear here, so incremental exports are a supplement to periodic
 // full backups, never a replacement for them.
+//
+// format=zip packages each collection as its own file inside collections/,
+// plus a manifest.json at the root — easier to open, filter, or search a
+// single collection than digging through one large JSON blob.
+// format=json (default) keeps the original single-file behavior.
 const exportBackup = async (req, res) => {
     try {
         const mode = req.query.mode === "incremental" ? "incremental" : "full";
+        const format = req.query.format === "zip" ? "zip" : "json";
 
         let since = null;
         if (mode === "incremental") {
@@ -76,8 +83,44 @@ const exportBackup = async (req, res) => {
             documentCounts
         });
 
-        const filename = `asodem-backup-${mode}-${new Date().toISOString().slice(0, 10)}.json`;
+        const dateStamp = new Date().toISOString().slice(0, 10);
 
+        if (format === "zip") {
+            const filename = `asodem-backup-${mode}-${dateStamp}.zip`;
+            res.setHeader("Content-Type", "application/zip");
+            res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
+
+            const archive = archiver("zip", { zlib: { level: 9 } });
+
+            archive.on("error", (err) => {
+                console.error("Archive error:", err);
+                if (!res.headersSent) {
+                    res.status(500).json({ message: "Failed to create backup archive." });
+                }
+            });
+
+            archive.pipe(res);
+
+            archive.append(
+                JSON.stringify({
+                    exportedAt: new Date().toISOString(),
+                    mode,
+                    since: since || null,
+                    documentCounts
+                }, null, 2),
+                { name: "manifest.json" }
+            );
+
+            for (const [key, docs] of Object.entries(output)) {
+                archive.append(JSON.stringify(docs, null, 2), { name: `collections/${key}.json` });
+            }
+
+            await archive.finalize();
+            return;
+        }
+
+        // Default — single JSON file, unchanged from before
+        const filename = `asodem-backup-${mode}-${dateStamp}.json`;
         res.setHeader("Content-Type", "application/json");
         res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
         res.status(200).send(JSON.stringify({
