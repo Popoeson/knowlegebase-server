@@ -158,6 +158,14 @@ const login = async (req, res) => {
             return res.status(401).json({ message: "Invalid email or password" });
         }
 
+        if (user.isSuspended) {
+            await logActivity({ user: user._id, email, event: "login_failed", metadata: { reason: "suspended" }, req });
+            return res.status(403).json({
+                message: "Your admin access has been revoked. Please contact support if you believe this is an error.",
+                code: "ACCOUNT_SUSPENDED"
+            });
+        }
+
         if (!user.isVerified) {
             await logActivity({ user: user._id, email, event: "login_failed", metadata: { reason: "unverified" }, req });
             return res.status(401).json({
@@ -167,7 +175,7 @@ const login = async (req, res) => {
             });
         }
 
-        const token = generateToken(user._id, user.role);
+        const token = generateToken(user._id, user.role, user.tokenVersion);
 
         await logActivity({ user: user._id, email, event: "login_success", req });
 

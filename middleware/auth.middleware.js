@@ -23,8 +23,26 @@ const protect = async (req, res, next) => {
             return res.status(401).json({ message: "User no longer exists." });
         }
 
-        // Admins bypass registration payment requirement
-        if (user.role !== "admin" && !user.hasPaidRegistration) {
+        if (user.isSuspended) {
+            return res.status(401).json({
+                message: "Account access has been revoked.",
+                code: "ACCOUNT_SUSPENDED"
+            });
+        }
+
+        // Treat a token minted before tokenVersion existed as version 0,
+        // so this deploy doesn't force-log-out every currently active session.
+        // A real mismatch (post-deploy revoke/role-change) still invalidates correctly.
+        const decodedVersion = decoded.tokenVersion || 0;
+        if (decodedVersion !== user.tokenVersion) {
+            return res.status(401).json({
+                message: "Session expired. Please log in again.",
+                code: "SESSION_INVALIDATED"
+            });
+        }
+
+        // Admins and superadmins bypass registration payment requirement
+        if (!["admin", "superadmin"].includes(user.role) && !user.hasPaidRegistration) {
             return res.status(402).json({
                 message: "Registration payment required.",
                 code: "REGISTRATION_PAYMENT_REQUIRED"
@@ -41,10 +59,18 @@ const protect = async (req, res, next) => {
 };
 
 const adminOnly = (req, res, next) => {
-    if (req.user && req.user.role === "admin") {
+    if (req.user && ["admin", "superadmin"].includes(req.user.role)) {
         next();
     } else {
         res.status(403).json({ message: "Access denied. Admins only." });
+    }
+};
+
+const superAdminOnly = (req, res, next) => {
+    if (req.user && req.user.role === "superadmin") {
+        next();
+    } else {
+        res.status(403).json({ message: "Access denied. Superadmins only." });
     }
 };
 
@@ -72,6 +98,21 @@ const protectUnpaid = async (req, res, next) => {
             return res.status(401).json({ message: "User no longer exists." });
         }
 
+        if (user.isSuspended) {
+            return res.status(401).json({
+                message: "Account access has been revoked.",
+                code: "ACCOUNT_SUSPENDED"
+            });
+        }
+
+        const decodedVersion = decoded.tokenVersion || 0;
+        if (decodedVersion !== user.tokenVersion) {
+            return res.status(401).json({
+                message: "Session expired. Please log in again.",
+                code: "SESSION_INVALIDATED"
+            });
+        }
+
         req.user = user;
         next();
 
@@ -81,4 +122,4 @@ const protectUnpaid = async (req, res, next) => {
     }
 };
 
-module.exports = { protect, adminOnly, protectUnpaid };
+module.exports = { protect, adminOnly, superAdminOnly, protectUnpaid };
