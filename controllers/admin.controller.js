@@ -4,7 +4,7 @@ const Category = require("../models/Category");
 const Question = require("../models/Question");
 const Certificate = require("../models/Certificate");
 const { stripHtml } = require("../utils/sanitize");
-
+const { logActivity } = require("../utils/activityLog");
 const { uploadToCloudinary } = require("../config/cloudinary");
 const cloudinary = require("cloudinary").v2;
 const Cache = require("../utils/cache");
@@ -66,8 +66,8 @@ const deleteUser = async (req, res) => {
         const user = await User.findById(req.params.id);
         if (!user) return res.status(404).json({ message: "User not found" });
 
-        if (user.role === "admin") {
-            return res.status(403).json({ message: "Cannot delete admin" });
+        if (["admin", "superadmin"].includes(user.role)) {
+            return res.status(403).json({ message: "Cannot delete an admin or superadmin. Revoke their access instead." });
         }
 
         // Certificates are meant to stay publicly verifiable indefinitely.
@@ -671,6 +671,142 @@ const saveApprovedQuestions = async (req, res) => {
 // ── REJECT AI QUESTIONS ──
 const rejectAIQuestions = async (req, res) => {
     res.status(200).json({ message: "Questions rejected. Nothing was saved." });
+};
+
+
+// ── GET ALL ADMINS (for Admin Management page) ──
+// Includes anyone currently admin/superadmin, plus anyone suspended
+// (role now "user" but isSuspended true) so revoked accounts still
+// show up with a "Reinstate" option instead of vanishing from view.
+const getAdmins = async (req, res) => {
+    try {
+        const admins = await User.find({
+            $or: [
+                { role: { $in: ["admin", "superadmin"] } },
+                { isSuspended: true }
+            ]
+        })
+            .select("-password -otp -otpExpires")
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({ admins });
+    } catch (error) {
+        console.error("Get admins error:", error);
+        res.status(500).json({ message: "Failed to get admins." });
+    }
+};
+
+
+// ── SEARCH REGULAR USERS BY EMAIL (for promoting someone to admin) ──
+const searchUsersByEmail = async (req, res) => {
+    try {
+        const { email } = req.query;
+        if (!email || email.trim().length < 2) {
+            return res.status(400).json({ message: "Enter at least 2 characters to search." });
+        }
+
+        const users = await User.find({
+            role: "user",
+            isSuspended: false,
+            email: { $regex: email.trim(), $options: "i" }
+        })
+            .select("firstName otherName surname email role")
+            .limit(10);
+
+        res.status(200).json({ users });
+    } catch (error) {
+        console.error("Search users error:", error);
+        res.status(500).json({ message: "Failed to search users." });
+    }
+};
+
+
+// ── UPDATE USER ROLE (promote / change tier / revoke / reinstate) ──
+// A single endpoint covers all four cases, driven by the target `role`:
+//   - role "admin" or "superadmin": normal tier change. If the target was
+//     previously suspended, this also reinstates them (isSuspended -> false).
+//   - role "user": full revoke — isSuspended -> true, meaning they can no
+//     longer log in at all, not even as a regular user.
+// Every change bumps tokenVersion, which immediately invalidates any
+// currently-active JWT for that user (see auth.middleware.js) — so a
+// revoke or demotion takes effect right away, not after their token expires.
+const updateUserRole = async (req, res) => {
+    try {
+        const { role } = req.body;
+        const validRoles = ["user", "admin", "superadmin"];
+
+        if (!role || !validRoles.includes(role)) {
+            return res.status(400).json({ message: "role must be one of: user, admin, superadmin" });
+        }
+
+        if (req.params.id === req.user._id.toString()) {
+            return res.status(400).json({ message: "You cannot change your own role." });
+        }
+
+        const target = await User.findById(req.params.id);
+        if (!target) return res.status(404).json({ message: "User not found" });
+
+        const fromRole = target.role;
+        const wasSuspended = target.isSuspended;
+
+        // Prevent removing the last active superadmin
+        if (fromRole === "superadmin" && role !== "superadmin") {
+            const otherSuperadmins = await User.countDocuments({
+                role: "superadmin",
+                isSuspended: false,
+                _id: { $ne: target._id }
+            });
+            if (otherSuperadmins === 0) {
+                return res.status(400).json({ message: "Cannot change role — this is the last active superadmin." });
+            }
+        }
+
+        target.role = role;
+        target.tokenVersion += 1; // force any existing session to re-login
+
+        let event = "role_changed";
+        if (role === "user") {
+            target.isSuspended = true;
+            event = "admin_access_revoked";
+        } else {
+            target.isSuspended = false;
+            if (wasSuspended) {
+                event = "admin_access_reinstated";
+            }
+        }
+
+        await target.save();
+
+        await logActivity({
+            user: req.user._id,
+            email: req.user.email,
+            event,
+            metadata: {
+                targetUserId: target._id.toString(),
+                targetEmail: target.email,
+                fromRole,
+                toRole: role
+            },
+            req
+        });
+
+        Cache.invalidate("admin:stats");
+
+        res.status(200).json({
+            message: "User role updated successfully.",
+            user: {
+                id: target._id,
+                fullName: target.fullName,
+                email: target.email,
+                role: target.role,
+                isSuspended: target.isSuspended
+            }
+        });
+
+    } catch (error) {
+        console.error("Update user role error:", error);
+        res.status(500).json({ message: "Failed to update user role." });
+    }
 };
 
 module.exports = {
