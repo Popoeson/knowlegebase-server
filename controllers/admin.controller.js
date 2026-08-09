@@ -824,5 +824,9 @@ module.exports = {
     deleteCategory,
     generateQuestionsWithAI,
     saveApprovedQuestions,
-    rejectAIQuestions
+    rejectAIQuestions,
+    getAdmins,
+    searchUsersByEmail,
+    updateUserRole
+};
 };
