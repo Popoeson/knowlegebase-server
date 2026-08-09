@@ -829,4 +829,3 @@ module.exports = {
     searchUsersByEmail,
     updateUserRole
 };
-};
