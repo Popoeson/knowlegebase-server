@@ -707,7 +707,7 @@ const searchUsersByEmail = async (req, res) => {
 
         const users = await User.find({
             role: "user",
-            isSuspended: false,
+            isSuspended: { $ne: true }, // matches false AND legacy docs missing the field entirely
             email: { $regex: email.trim(), $options: "i" }
         })
             .select("firstName otherName surname email role")
@@ -753,7 +753,7 @@ const updateUserRole = async (req, res) => {
         if (fromRole === "superadmin" && role !== "superadmin") {
             const otherSuperadmins = await User.countDocuments({
                 role: "superadmin",
-                isSuspended: false,
+                isSuspended: { $ne: true },
                 _id: { $ne: target._id }
             });
             if (otherSuperadmins === 0) {
