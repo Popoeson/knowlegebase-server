@@ -146,4 +146,4 @@ const sendPasswordResetOTP = async (email, fullName, otp) => {
     await sendEmail(email, fullName, subject, htmlContent);
 };
 
-module.exports = { generateOTP, sendOTP, sendPasswordResetOTP };
+module.exports = { generateOTP, sendOTP, sendPasswordResetOTP, sendEmail };
