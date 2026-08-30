@@ -4,6 +4,7 @@ const User = require("../models/User");
 const Payment = require("../models/Payment");
 const { logActivity } = require("../utils/activityLog");
 const https = require("https");
+const { sendEmail } = require("../utils/sendOTP");
 
 // ── HELPER: CALL PAYSTACK API (mirrors payment.controller.js's helper —
 // duplicated rather than shared to avoid introducing a cross-controller
@@ -149,6 +150,25 @@ const getMyReferralInfo = async (req, res) => {
     } catch (error) {
         console.error("Get my referral info error:", error);
         res.status(500).json({ message: "Failed to get referral info." });
+    }
+};
+
+// ── HELPER: NOTIFY ADMIN OF NEW PAYOUT RECIPIENT (self-serve creation) ──
+// Uses the same Brevo HTTP API path as OTP/password-reset emails.
+const notifyAdminOfSubaccount = async (partner, adminEmail) => {
+    try {
+        await sendEmail(
+            adminEmail,
+            "ASODEM Admin",
+            `New referral subaccount created — ${partner.name}`,
+            `<p>A new Paystack payout recipient was just set up for referral partner <strong>${partner.name}</strong> (${partner.tier} tier, code ${partner.referralCode}).</p>
+             <p>Recipient code: ${partner.paystackRecipientCode}<br/>
+             Bank: ${partner.bankDetails?.accountName || "n/a"} — ${partner.bankDetails?.accountNumber || "n/a"}</p>
+             <p>Please verify this on the Paystack dashboard.</p>`
+        );
+    } catch (err) {
+        // Never block the subaccount-creation flow over a notification failure
+        console.error("Admin subaccount notification failed:", err);
     }
 };
 
