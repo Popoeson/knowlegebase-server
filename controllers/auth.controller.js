@@ -26,14 +26,6 @@ const register = async (req, res) => {
             return res.status(400).json({ message: "An account with this email already exists" });
         }
 
-        const otp = generateOTP();
-        const otpExpires = new Date(Date.now() + (Number(process.env.OTP_EXPIRES_IN) || 600000));
-
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ message: "An account with this email already exists" });
-        }
-
         // First-touch attribution — resolved once, here, and never revisited.
         // A missing, unknown, or inactive code is silently ignored so a
         // broken referral link never blocks a real signup.
