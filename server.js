@@ -101,6 +101,7 @@ app.use("/api/certificates", certificateRoutes);
 app.use("/api/error-monitor", errorMonitorRoutes);
 app.use("/api/activity", activityRoutes);
 app.use("/api/backup", backupRoutes);
+app.use("/api/referral", require("./routes/referral.routes"));
 
 app.use((req, res) => {
     res.status(404).json({ message: "Route not found" });
