@@ -49,6 +49,19 @@ const {
     revokeCertificate
 } = require("../controllers/certificate.controller");
 
+const {
+    onboardPartner,
+    getAllPartners,
+    editPartner,
+    togglePartnerStatus,
+    reassignStudentPartner,
+    getPartnerSettlement,
+    getReferralSettings,
+    updateReferralSettings,
+    getAllSubaccounts,
+    deleteSubaccount
+} = require("../controllers/referral.controller");
+
 const { adminActionLimiter } = require("../middleware/rateLimit.middleware");
 
 // All admin routes are protected, and rate-limited as a group — caps how
@@ -107,5 +120,21 @@ router.delete("/transactions/:id", superAdminOnly, deleteTransaction);
 // ── CERTIFICATES ──
 router.get("/certificates", getAllCertificates);
 router.patch("/certificates/:id/revoke", superAdminOnly, revokeCertificate);
+
+// ── REFERRAL PARTNERS ──
+router.post("/referral-partners", superAdminOnly, onboardPartner);
+router.get("/referral-partners", getAllPartners);
+router.put("/referral-partners/:id", superAdminOnly, editPartner);
+router.patch("/referral-partners/:id/toggle", superAdminOnly, togglePartnerStatus);
+router.get("/referral-partners/:id/settlement", getPartnerSettlement);
+router.patch("/users/:id/referral-partner", superAdminOnly, reassignStudentPartner);
+
+// ── REFERRAL SETTINGS (global individual flat amount) ──
+router.get("/referral-settings", getReferralSettings);
+router.put("/referral-settings", superAdminOnly, updateReferralSettings);
+
+// ── REFERRAL SUBACCOUNTS (pruning) ──
+router.get("/referral-subaccounts", getAllSubaccounts);
+router.delete("/referral-subaccounts/:id", superAdminOnly, deleteSubaccount);
 
 module.exports = router;
