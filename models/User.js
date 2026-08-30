@@ -71,27 +71,8 @@ const userSchema = new mongoose.Schema(
             type: Boolean,
             default: false
         },
-        registrationPaymentRef: {
-            type: String,
-            default: null
-        }
-    },
-    {
-        timestamps: true,
-        toJSON: { virtuals: true },
-        toObject: { virtuals: true }
-    }
-);
 
-old_str:
-        registrationPaymentRef: {
-            type: String,
-            default: null
-        }
-    },
-
-new_str:
-        registrationPaymentRef: {
+    registrationPaymentRef: {
             type: String,
             default: null
         },
@@ -107,6 +88,13 @@ new_str:
             default: null
         }
     },
+
+    {
+        timestamps: true,
+        toJSON: { virtuals: true },
+        toObject: { virtuals: true }
+    }
+);
 
 userSchema.virtual("fullName").get(function () {
     if (this.otherName) {
