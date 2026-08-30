@@ -75,11 +75,6 @@ const paymentSchema = new mongoose.Schema(
             default: "not_applicable"
         }
     },
-        paidAt: {
-            type: Date,
-            default: null
-        }
-    },
     { timestamps: true }
 );
 
