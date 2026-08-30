@@ -83,6 +83,31 @@ const userSchema = new mongoose.Schema(
     }
 );
 
+old_str:
+        registrationPaymentRef: {
+            type: String,
+            default: null
+        }
+    },
+
+new_str:
+        registrationPaymentRef: {
+            type: String,
+            default: null
+        },
+        // First-touch, immutable — set once at registration, never
+        // overwritten by any later login or code entry.
+        referralPartnerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "ReferralPartner",
+            default: null
+        },
+        referralCodeUsed: {
+            type: String,
+            default: null
+        }
+    },
+
 userSchema.virtual("fullName").get(function () {
     if (this.otherName) {
         return `${this.firstName} ${this.otherName} ${this.surname}`;
