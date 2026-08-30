@@ -5,6 +5,8 @@ const { logActivity } = require("../utils/activityLog");
 const Course = require("../models/Course");
 const User = require("../models/User");
 const ExamAttempt = require("../models/ExamAttempt");
+const ReferralPartner = require("../models/ReferralPartner");
+const ReferralSettings = require("../models/ReferralSettings");
 const { getRegistrationAmountNGN, getCourseAmountNGN } = require("../utils/pricing");
 
 // ── HELPER: CALL PAYSTACK API ──
@@ -37,6 +39,91 @@ const paystackRequest = (method, path, body = null) => {
         if (body) req.write(JSON.stringify(body));
         req.end();
     });
+};
+
+// ── REFERRAL PAYOUT (Option B — separate Transfer call, decoupled from
+// the main split-code charge) ──
+// Called only at the moment a Payment first transitions to "success",
+// from both verify* functions and the webhook. Snapshots the rate/tier
+// on the Payment record regardless of outcome, so reporting is accurate
+// even if the actual Transfer fails or is held pending.
+//
+// Rules enforced here:
+//   - one-time tier: pays out ONLY on paymentType === "registration", once.
+//   - lifetime tier: pays out on BOTH "registration" and "certificate"
+//     (exam fee) payments, for as long as the partner stays active.
+//   - inactive partner at time of this payment: amount is still snapshotted
+//     for reporting, but recipient is "asodem" and no Transfer is attempted —
+//     this is the deactivation redirect. No retroactive catch-up later.
+const processReferralPayout = async (payment, user, paymentType) => {
+    try {
+        if (!user.referralPartnerId) return;
+
+        const partner = await ReferralPartner.findById(user.referralPartnerId);
+        if (!partner) return;
+
+        // one-time tier never pays out on exam/certificate fees
+        if (partner.tier === "one-time" && paymentType !== "registration") {
+            return;
+        }
+
+        let payoutAmount = 0;
+        if (partner.tier === "one-time") {
+            const settings = await ReferralSettings.getSettings();
+            payoutAmount = settings.individualFlatAmount || 0;
+        } else {
+            payoutAmount = paymentType === "registration"
+                ? (partner.registrationFlatAmount || 0)
+                : (partner.examFlatAmount || 0);
+        }
+
+        if (payoutAmount <= 0) return;
+
+        payment.referralPartnerId = partner._id;
+        payment.referralTier = partner.tier;
+        payment.referralPayoutAmount = payoutAmount;
+
+        if (partner.status !== "active") {
+            payment.referralPayoutRecipient = "asodem";
+            payment.referralPayoutStatus = "redirected_asodem";
+            await payment.save();
+            return;
+        }
+
+        payment.referralPayoutRecipient = "partner";
+
+        if (!partner.paystackRecipientCode) {
+            payment.referralPayoutStatus = "pending_subaccount";
+            await payment.save();
+            return;
+        }
+
+        try {
+            const transferResponse = await paystackRequest("POST", "/transfer", {
+                source: "balance",
+                amount: payoutAmount,
+                recipient: partner.paystackRecipientCode,
+                reason: `ASODEM referral payout — ${paymentType} — ${payment.reference}`
+            });
+
+            if (transferResponse.status) {
+                payment.referralPayoutStatus = "paid_to_partner";
+            } else {
+                console.error("Referral transfer failed:", transferResponse.message);
+                payment.referralPayoutStatus = "transfer_failed";
+            }
+        } catch (transferError) {
+            console.error("Referral transfer error:", transferError);
+            payment.referralPayoutStatus = "transfer_failed";
+        }
+
+        await payment.save();
+
+    } catch (error) {
+        // Never let a referral payout issue affect the student's own
+        // payment flow — this runs after their payment already succeeded.
+        console.error("Referral payout processing error:", error);
+    }
 };
 
 // ── INITIALIZE CERTIFICATE PAYMENT ──
@@ -188,6 +275,8 @@ const verifyCertificatePayment = async (req, res) => {
             payment.channel = transaction.channel;
             payment.paidAt = new Date(transaction.paid_at);
             await payment.save();
+
+            await processReferralPayout(payment, user, "certificate");
 
             await logActivity({
                 user: user._id, email: user.email, event: "certificate_payment_verified",
@@ -369,6 +458,8 @@ const verifyRegistrationPayment = async (req, res) => {
             registrationPaymentRef: reference
         });
 
+        await processReferralPayout(payment, user, "registration");
+
         await logActivity({
             user: user._id, email: user.email, event: "registration_payment_verified",
             metadata: { reference }, req
@@ -459,7 +550,7 @@ const bulkDeleteTransactions = async (req, res) => {
     }
 };
 
-// ── PAYSTACK WEBHOOK ──
+// PAYSTACK WEBHOOK ──
 // Server-authoritative confirmation, independent of the client ever
 // calling /verify. Covers the case where a user pays (especially via
 // async bank transfer) and never returns to the app — client-side verify
@@ -528,9 +619,11 @@ const paystackWebhook = async (req, res) => {
                 });
             }
         }
-        // type === "certificate": nothing further to do here — startAttempt
-        // finds it via status:"success", examAttempt:null when the user
-        // proceeds to take the exam.
+
+        const payingUser = await User.findById(payment.user);
+        if (payingUser) {
+            await processReferralPayout(payment, payingUser, payment.type === "registration" ? "registration" : "certificate");
+        }
 
     } catch (error) {
         console.error("Paystack webhook error:", error);
