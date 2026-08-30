@@ -47,6 +47,37 @@ const paymentSchema = new mongoose.Schema(
         paidAt: {
             type: Date,
             default: null
+        },
+        // Referral payout fields — all snapshotted at verify-time, never
+        // recalculated later even if the partner's rate or status changes.
+        referralPartnerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "ReferralPartner",
+            default: null
+        },
+        referralTier: {
+            type: String,
+            enum: [null, "one-time", "lifetime"],
+            default: null
+        },
+        referralPayoutAmount: {
+            type: Number,
+            default: 0
+        },
+        referralPayoutRecipient: {
+            type: String,
+            enum: [null, "partner", "asodem"],
+            default: null
+        },
+        referralPayoutStatus: {
+            type: String,
+            enum: ["not_applicable", "paid_to_partner", "pending_subaccount", "redirected_asodem", "transfer_failed"],
+            default: "not_applicable"
+        }
+    },
+        paidAt: {
+            type: Date,
+            default: null
         }
     },
     { timestamps: true }
