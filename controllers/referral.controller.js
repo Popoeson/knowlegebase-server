@@ -48,24 +48,17 @@ const suggestReferralCode = (name) => {
     return `${base}${suffix}`;
 };
 
-// ── HELPER: NOTIFY ADMIN OF NEW SUBACCOUNT (self-serve creation) ──
+// ── HELPER: NOTIFY ADMIN OF NEW PAYOUT RECIPIENT (self-serve creation) ──
 // Uses the same Brevo HTTP API path as OTP/password-reset emails.
-// NOTE: assumes utils/sendOTP.js exports a generic sendEmail-style helper —
-// verify against the real file before relying on this; adjust the import/
-// call shape if the actual export differs.
 const notifyAdminOfSubaccount = async (partner, adminEmail) => {
     try {
-        const { sendEmail } = require("../utils/sendOTP");
-        if (typeof sendEmail !== "function") {
-            console.warn("notifyAdminOfSubaccount: sendEmail helper not found in utils/sendOTP — skipping notification email, check logs instead.");
-            return;
-        }
         await sendEmail(
             adminEmail,
+            "ASODEM Admin",
             `New referral subaccount created — ${partner.name}`,
-            `<p>A new Paystack subaccount was just created for referral partner <strong>${partner.name}</strong> (${partner.tier} tier, code ${partner.referralCode}).</p>
-             <p>Subaccount code: ${partner.paystackSubaccountCode}<br/>
-             Recipient code: ${partner.paystackRecipientCode}</p>
+            `<p>A new Paystack payout recipient was just set up for referral partner <strong>${partner.name}</strong> (${partner.tier} tier, code ${partner.referralCode}).</p>
+             <p>Recipient code: ${partner.paystackRecipientCode}<br/>
+             Bank: ${partner.bankDetails?.accountName || "n/a"} — ${partner.bankDetails?.accountNumber || "n/a"}</p>
              <p>Please verify this on the Paystack dashboard.</p>`
         );
     } catch (err) {
@@ -76,7 +69,7 @@ const notifyAdminOfSubaccount = async (partner, adminEmail) => {
 
 // ── SELF-SERVE: SIGN UP FOR AFFILIATION ──
 // Opt-in only — a user is NOT a referral partner just by existing.
-// Creates a one-time tier partner. Lifetime tier is admin-only (onboardInstitution below).
+// Creates a one-time tier partner. Lifetime tier is admin-only (onboardPartner below).
 const signUpForAffiliation = async (req, res) => {
     try {
         const user = req.user;
@@ -150,25 +143,6 @@ const getMyReferralInfo = async (req, res) => {
     } catch (error) {
         console.error("Get my referral info error:", error);
         res.status(500).json({ message: "Failed to get referral info." });
-    }
-};
-
-// ── HELPER: NOTIFY ADMIN OF NEW PAYOUT RECIPIENT (self-serve creation) ──
-// Uses the same Brevo HTTP API path as OTP/password-reset emails.
-const notifyAdminOfSubaccount = async (partner, adminEmail) => {
-    try {
-        await sendEmail(
-            adminEmail,
-            "ASODEM Admin",
-            `New referral subaccount created — ${partner.name}`,
-            `<p>A new Paystack payout recipient was just set up for referral partner <strong>${partner.name}</strong> (${partner.tier} tier, code ${partner.referralCode}).</p>
-             <p>Recipient code: ${partner.paystackRecipientCode}<br/>
-             Bank: ${partner.bankDetails?.accountName || "n/a"} — ${partner.bankDetails?.accountNumber || "n/a"}</p>
-             <p>Please verify this on the Paystack dashboard.</p>`
-        );
-    } catch (err) {
-        // Never block the subaccount-creation flow over a notification failure
-        console.error("Admin subaccount notification failed:", err);
     }
 };
 
