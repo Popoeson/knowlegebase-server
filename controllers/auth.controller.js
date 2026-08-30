@@ -1,4 +1,5 @@
 const User = require("../models/User");
+const ReferralPartner = require("../models/ReferralPartner");
 const generateToken = require("../utils/generateToken");
 const { generateOTP, sendOTP, sendPasswordResetOTP } = require("../utils/sendOTP");
 const { logActivity } = require("../utils/activityLog");
@@ -6,7 +7,7 @@ const { logActivity } = require("../utils/activityLog");
 // ── REGISTER ──
 const register = async (req, res) => {
     try {
-        const { firstName, otherName, surname, email, password, confirmPassword } = req.body;
+        const { firstName, otherName, surname, email, password, confirmPassword, referralCode } = req.body;
 
         if (!firstName || !surname || !email || !password || !confirmPassword) {
             return res.status(400).json({ message: "All required fields must be filled" });
@@ -28,6 +29,31 @@ const register = async (req, res) => {
         const otp = generateOTP();
         const otpExpires = new Date(Date.now() + (Number(process.env.OTP_EXPIRES_IN) || 600000));
 
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ message: "An account with this email already exists" });
+        }
+
+        // First-touch attribution — resolved once, here, and never revisited.
+        // A missing, unknown, or inactive code is silently ignored so a
+        // broken referral link never blocks a real signup.
+        let referralPartnerId = null;
+        let resolvedReferralCode = null;
+
+        if (referralCode && referralCode.trim()) {
+            const partner = await ReferralPartner.findOne({
+                referralCode: referralCode.trim().toUpperCase(),
+                status: "active"
+            });
+            if (partner) {
+                referralPartnerId = partner._id;
+                resolvedReferralCode = partner.referralCode;
+            }
+        }
+
+        const otp = generateOTP();
+        const otpExpires = new Date(Date.now() + (Number(process.env.OTP_EXPIRES_IN) || 600000));
+
         const user = await User.create({
             firstName,
             otherName: otherName || "",
@@ -35,7 +61,9 @@ const register = async (req, res) => {
             email,
             password,
             otp,
-            otpExpires
+            otpExpires,
+            referralPartnerId,
+            referralCodeUsed: resolvedReferralCode
         });
 
         try {
@@ -49,6 +77,14 @@ const register = async (req, res) => {
         }
 
         await logActivity({ user: user._id, email, event: "user_registered", req });
+
+        if (referralPartnerId) {
+            await logActivity({
+                user: user._id, email, event: "referral_attribution_set",
+                metadata: { referralPartnerId: referralPartnerId.toString(), referralCode: resolvedReferralCode },
+                req
+            });
+        }
 
         res.status(201).json({
             message: "Registration successful. Please check your email for your OTP.",
