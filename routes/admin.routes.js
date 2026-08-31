@@ -54,6 +54,7 @@ const {
     getAllPartners,
     editPartner,
     togglePartnerStatus,
+    grantPayoutChangeOverride,
     reassignStudentPartner,
     getPartnerSettlement,
     getReferralSettings,
@@ -126,6 +127,7 @@ router.post("/referral-partners", superAdminOnly, onboardPartner);
 router.get("/referral-partners", getAllPartners);
 router.put("/referral-partners/:id", superAdminOnly, editPartner);
 router.patch("/referral-partners/:id/toggle", superAdminOnly, togglePartnerStatus);
+router.patch("/referral-partners/:id/grant-override", superAdminOnly, grantPayoutChangeOverride);
 router.get("/referral-partners/:id/settlement", getPartnerSettlement);
 router.patch("/users/:id/referral-partner", superAdminOnly, reassignStudentPartner);
 
