@@ -83,31 +83,17 @@ const clearExpiredSubaccountInfoBatch = async (partners) => {
     return partners;
 };
 
-// ── HELPER: NOTIFY ADMIN OF NEW PAYOUT RECIPIENT (self-serve creation) ──
-// Uses the same Brevo HTTP API path as OTP/password-reset emails.
-const notifyAdminOfSubaccount = async (partner, adminEmail) => {
-    try {
-        await sendEmail(
-            adminEmail,
-            "ASODEM Admin",
-            `New referral subaccount created — ${partner.name}`,
-            `<p>A new Paystack payout recipient was just set up for referral partner <strong>${partner.name}</strong> (${partner.tier} tier, code ${partner.referralCode}).</p>
-             <p>Recipient code: ${partner.paystackRecipientCode}<br/>
-             Bank: ${partner.bankDetails?.accountName || "n/a"} — ${partner.bankDetails?.accountNumber || "n/a"}</p>
-             <p>Please verify this on the Paystack dashboard.</p>`
-        );
-    } catch (err) {
-        // Never block the subaccount-creation flow over a notification failure
-        console.error("Admin subaccount notification failed:", err);
-    }
-};
-
 // ── SELF-SERVE: SIGN UP FOR AFFILIATION ──
 // Opt-in only — a user is NOT a referral partner just by existing.
 // Creates a one-time tier partner. Lifetime tier is admin-only (onboardPartner below).
 const signUpForAffiliation = async (req, res) => {
     try {
         const user = req.user;
+        const { consent } = req.body;
+
+        if (consent !== true) {
+            return res.status(400).json({ message: "You must accept the Referral Program Terms to sign up." });
+        }
 
         const existing = await ReferralPartner.findOne({ linkedUserId: user._id });
         if (existing) {
@@ -122,7 +108,8 @@ const signUpForAffiliation = async (req, res) => {
             referralCode: suggestedCode,
             tier: "one-time",
             status: "active",
-            onboardedBy: null
+            onboardedBy: null,
+            termsAcceptedAt: new Date()
         });
 
         await logActivity({
@@ -213,9 +200,57 @@ const getMyReferralInfo = async (req, res) => {
     }
 };
 
-// ── SELF-SERVE: SUBMIT BANK DETAILS → CREATE PAYSTACK RECIPIENT ──
-// Any partner (institution or individual) does this once. Triggers the
-// admin notification requested for manual verification on Paystack's side.
+// ── SELF-SERVE: VERIFY BANK ACCOUNT (preview only, no save) ──
+// Called by the frontend when the user types an account number, so they
+// can see the resolved account name and confirm it's theirs BEFORE the
+// actual save/recipient-creation step. Does not touch the ReferralPartner
+// record at all.
+const verifyBankAccount = async (req, res) => {
+    try {
+        const { bankCode, accountNumber } = req.body;
+
+        if (!bankCode || !accountNumber) {
+            return res.status(400).json({ message: "Bank code and account number are required." });
+        }
+
+        const resolveResponse = await paystackRequest(
+            "GET",
+            `/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`
+        );
+
+        if (!resolveResponse.status) {
+            return res.status(400).json({ message: resolveResponse.message || "Could not verify bank account." });
+        }
+
+        res.status(200).json({ accountName: resolveResponse.data.account_name });
+
+    } catch (error) {
+        console.error("Verify bank account error:", error);
+        res.status(500).json({ message: "Failed to verify bank account." });
+    }
+};
+
+// ── HELPER: NOTIFY ADMIN OF PAYOUT ACCOUNT CHANGE (not just creation) ──
+const notifyAdminOfAccountChange = async (partner, adminEmail, isEdit) => {
+    try {
+        await sendEmail(
+            adminEmail,
+            "ASODEM Admin",
+            `Referral payout account ${isEdit ? "changed" : "created"} — ${partner.name}`,
+            `<p>Partner <strong>${partner.name}</strong> (${partner.tier} tier, code ${partner.referralCode}) just
+             ${isEdit ? "changed" : "set up"} their payout account.</p>
+             <p>Recipient code: ${partner.paystackRecipientCode}<br/>
+             Bank: ${partner.bankDetails?.accountName || "n/a"} — ${partner.bankDetails?.accountNumber || "n/a"}</p>
+             <p>Please verify this on the Paystack dashboard.</p>`
+        );
+    } catch (err) {
+        console.error("Admin account-change notification failed:", err);
+    }
+};
+
+// ── SELF-SERVE: SUBMIT BANK DETAILS → CREATE/UPDATE PAYSTACK RECIPIENT ──
+// Handles both the first-ever setup (no cooldown) and later edits (14-day
+// cooldown, unless admin has granted a one-time override — consumed on use).
 const setupPayoutAccount = async (req, res) => {
     try {
         const { bankCode, accountNumber } = req.body;
@@ -229,8 +264,23 @@ const setupPayoutAccount = async (req, res) => {
             return res.status(404).json({ message: "You are not registered as a referral partner." });
         }
 
-        // Resolve account name via Paystack before creating the recipient,
-        // so the admin notification includes a human-readable name to check.
+        const isEdit = !!partner.paystackRecipientCode;
+
+        if (isEdit && !partner.payoutChangeOverrideGranted) {
+            const COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000;
+            const lastChange = partner.lastPayoutAccountChangeAt;
+            if (lastChange && (Date.now() - lastChange.getTime()) < COOLDOWN_MS) {
+                const daysRemaining = Math.ceil((COOLDOWN_MS - (Date.now() - lastChange.getTime())) / (24 * 60 * 60 * 1000));
+                return res.status(403).json({
+                    message: `Payout account details can only be changed once every 14 days. Please try again in ${daysRemaining} day${daysRemaining !== 1 ? "s" : ""}, or ask an admin to grant an early-change override.`,
+                    code: "PAYOUT_CHANGE_COOLDOWN",
+                    daysRemaining
+                });
+            }
+        }
+
+        // Resolve account name via Paystack before creating the recipient —
+        // never trusts a client-supplied name from the earlier preview step.
         const resolveResponse = await paystackRequest(
             "GET",
             `/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`
@@ -256,32 +306,109 @@ const setupPayoutAccount = async (req, res) => {
 
         partner.bankDetails = { bankCode, accountNumber, accountName };
         partner.paystackRecipientCode = recipientResponse.data.recipient_code;
-        // subaccountDeletedAt cleared in case this partner previously had one
-        // removed by admin and is now re-setting up.
         partner.subaccountDeletedAt = null;
+        partner.lastPayoutAccountChangeAt = new Date();
+        if (isEdit && partner.payoutChangeOverrideGranted) {
+            partner.payoutChangeOverrideGranted = false; // consume the one-time override
+        }
         await partner.save();
 
-        // Notify admin — required so every new subaccount gets a manual
-        // check on Paystack's own dashboard, per project policy.
         if (process.env.ADMIN_NOTIFICATION_EMAIL) {
-            await notifyAdminOfSubaccount(partner, process.env.ADMIN_NOTIFICATION_EMAIL);
+            await notifyAdminOfAccountChange(partner, process.env.ADMIN_NOTIFICATION_EMAIL, isEdit);
         } else {
-            console.warn("ADMIN_NOTIFICATION_EMAIL not set — skipping admin subaccount notification email.");
+            console.warn("ADMIN_NOTIFICATION_EMAIL not set — skipping admin notification email.");
         }
 
         await logActivity({
-            user: req.user._id, email: req.user.email, event: "referral_payout_account_set",
+            user: req.user._id, email: req.user.email,
+            event: isEdit ? "referral_payout_account_edited" : "referral_payout_account_set",
             metadata: { referralPartnerId: partner._id.toString(), accountName }, req
         });
 
         res.status(200).json({
-            message: "Payout account set up successfully. Any pending payouts will now be processed.",
+            message: isEdit
+                ? "Payout account updated successfully."
+                : "Payout account set up successfully. Any pending payouts will now be processed.",
             accountName
         });
 
     } catch (error) {
         console.error("Setup payout account error:", error);
         res.status(500).json({ message: "Failed to set up payout account." });
+    }
+};
+
+// ── SELF-SERVE: OPT OUT OF THE REFERRAL PROGRAM ──
+// Reuses the same status field admin deactivation uses — deactivation
+// already means "redirect payouts to ASODEM" regardless of who triggered
+// it (see processReferralPayout in payment.controller.js). Admin gets an
+// email alert specifically for self-initiated opt-outs.
+const optOutOfReferralProgram = async (req, res) => {
+    try {
+        const partner = await ReferralPartner.findOne({ linkedUserId: req.user._id });
+        if (!partner) {
+            return res.status(404).json({ message: "You are not registered as a referral partner." });
+        }
+
+        if (partner.status === "inactive") {
+            return res.status(400).json({ message: "You have already opted out." });
+        }
+
+        partner.status = "inactive";
+        await partner.save();
+
+        if (process.env.ADMIN_NOTIFICATION_EMAIL) {
+            try {
+                await sendEmail(
+                    process.env.ADMIN_NOTIFICATION_EMAIL,
+                    "ASODEM Admin",
+                    `Referral partner opted out — ${partner.name}`,
+                    `<p>Partner <strong>${partner.name}</strong> (${partner.tier} tier, code ${partner.referralCode}) has opted out of the referral program.</p>
+                     <p>Future referral payouts for their existing referred students will be redirected to ASODEM until they opt back in.</p>`
+                );
+            } catch (err) {
+                console.error("Admin opt-out notification failed:", err);
+            }
+        }
+
+        await logActivity({
+            user: req.user._id, email: req.user.email, event: "referral_opted_out",
+            metadata: { referralPartnerId: partner._id.toString() }, req
+        });
+
+        res.status(200).json({ message: "You have opted out of the referral program. Future payouts will not be processed until you opt back in." });
+
+    } catch (error) {
+        console.error("Opt out error:", error);
+        res.status(500).json({ message: "Failed to opt out." });
+    }
+};
+
+// ── SELF-SERVE: OPT BACK IN ──
+const optBackIntoReferralProgram = async (req, res) => {
+    try {
+        const partner = await ReferralPartner.findOne({ linkedUserId: req.user._id });
+        if (!partner) {
+            return res.status(404).json({ message: "You are not registered as a referral partner." });
+        }
+
+        if (partner.status === "active") {
+            return res.status(400).json({ message: "You are already active." });
+        }
+
+        partner.status = "active";
+        await partner.save();
+
+        await logActivity({
+            user: req.user._id, email: req.user.email, event: "referral_opted_back_in",
+            metadata: { referralPartnerId: partner._id.toString() }, req
+        });
+
+        res.status(200).json({ message: "Welcome back — your referral program is active again." });
+
+    } catch (error) {
+        console.error("Opt back in error:", error);
+        res.status(500).json({ message: "Failed to opt back in." });
     }
 };
 
@@ -392,6 +519,30 @@ const editPartner = async (req, res) => {
             return res.status(409).json({ message: "That referral code is already taken." });
         }
         res.status(500).json({ message: "Failed to update partner." });
+    }
+};
+
+// ── ADMIN: GRANT A ONE-TIME PAYOUT-ACCOUNT-CHANGE COOLDOWN OVERRIDE ──
+// Consumed automatically the next time the partner successfully changes
+// their bank details — never a standing bypass.
+const grantPayoutChangeOverride = async (req, res) => {
+    try {
+        const partner = await ReferralPartner.findById(req.params.id);
+        if (!partner) return res.status(404).json({ message: "Partner not found." });
+
+        partner.payoutChangeOverrideGranted = true;
+        await partner.save();
+
+        await logActivity({
+            user: req.user._id, email: req.user.email, event: "referral_payout_override_granted",
+            metadata: { referralPartnerId: partner._id.toString() }, req
+        });
+
+        res.status(200).json({ message: "Override granted. The partner can now change their payout account once before the 14-day cooldown normally applies." });
+
+    } catch (error) {
+        console.error("Grant payout override error:", error);
+        res.status(500).json({ message: "Failed to grant override." });
     }
 };
 
@@ -609,11 +760,15 @@ module.exports = {
     signUpForAffiliation,
     getMyReferralInfo,
     setupPayoutAccount,
+    verifyBankAccount,
+    optOutOfReferralProgram,
+    optBackIntoReferralProgram,
     getBankList,
     onboardPartner,
     getAllPartners,
     editPartner,
     togglePartnerStatus,
+    grantPayoutChangeOverride,
     reassignStudentPartner,
     getPartnerSettlement,
     getReferralSettings,
