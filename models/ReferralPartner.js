@@ -69,6 +69,26 @@ const referralPartnerSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             default: null // null = self-serve individual signup, not admin-onboarded
+        },
+        // Recorded only for self-serve signups (see signUpForAffiliation) —
+        // admin-onboarded lifetime partners go through a separate agreement.
+        termsAcceptedAt: {
+            type: Date,
+            default: null
+        },
+        // 14-day payout-account change cooldown. Set on every successful
+        // create/edit of bank details. An edit within 14 days of this
+        // timestamp is blocked unless payoutChangeOverrideGranted is true.
+        lastPayoutAccountChangeAt: {
+            type: Date,
+            default: null
+        },
+        // Admin-granted, one-time bypass of the 14-day cooldown. Consumed
+        // (reset to false) automatically the moment it's used — never a
+        // standing bypass.
+        payoutChangeOverrideGranted: {
+            type: Boolean,
+            default: false
         }
     },
     { timestamps: true }
