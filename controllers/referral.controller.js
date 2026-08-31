@@ -164,6 +164,36 @@ const getMyReferralInfo = async (req, res) => {
             } }
         ]);
 
+        // Referred-student list — meaningful mainly for lifetime-tier
+        // partners (institutions), but returned for both tiers since
+        // it's cheap and the frontend can choose how much of it to show.
+        // Per-student payout total included so a partner can see which
+        // of their referrals has generated how much, without exposing
+        // any other student's personal payment details.
+        const referredUsers = await User.find({ referralPartnerId: partner._id })
+            .select("firstName otherName surname email createdAt")
+            .sort({ createdAt: -1 });
+
+        const perStudentTotals = await Payment.aggregate([
+            { $match: { referralPartnerId: partner._id, status: "success" } },
+            { $group: {
+                _id: "$user",
+                totalGenerated: { $sum: "$referralPayoutAmount" },
+                transactionCount: { $sum: 1 }
+            } }
+        ]);
+        const totalsByUserId = {};
+        perStudentTotals.forEach(t => { totalsByUserId[t._id.toString()] = t; });
+
+        const referredStudents = referredUsers.map(u => ({
+            id: u._id,
+            fullName: u.fullName,
+            email: u.email,
+            joinedAt: u.createdAt,
+            totalGenerated: totalsByUserId[u._id.toString()]?.totalGenerated || 0,
+            transactionCount: totalsByUserId[u._id.toString()]?.transactionCount || 0
+        }));
+
         res.status(200).json({
             partner: {
                 name: partner.name,
@@ -173,7 +203,8 @@ const getMyReferralInfo = async (req, res) => {
                 hasSubaccount: !!partner.paystackRecipientCode
             },
             referredStudentCount: referredCount,
-            payoutBreakdown: payoutAgg
+            payoutBreakdown: payoutAgg,
+            referredStudents
         });
 
     } catch (error) {
