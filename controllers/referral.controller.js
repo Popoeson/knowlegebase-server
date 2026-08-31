@@ -187,7 +187,8 @@ const getMyReferralInfo = async (req, res) => {
                 referralCode: partner.referralCode,
                 tier: partner.tier,
                 status: partner.status,
-                hasSubaccount: !!partner.paystackRecipientCode
+                hasSubaccount: !!partner.paystackRecipientCode,
+                payoutAccountName: partner.bankDetails?.accountName || null
             },
             referredStudentCount: referredCount,
             payoutBreakdown: payoutAgg,
