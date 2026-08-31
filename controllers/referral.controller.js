@@ -48,6 +48,41 @@ const suggestReferralCode = (name) => {
     return `${base}${suffix}`;
 };
 
+// ── HELPER: LAZY 30-DAY CLEAR ──
+// Same lazy-TTL pattern as utils/cache.js — no cron job needed. Any read
+// path that fetches a ReferralPartner should run its result(s) through
+// this first. If a subaccount was deleted more than 30 days ago, the
+// retained bank/recipient info is wiped for good at that point.
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+const clearExpiredSubaccountInfo = async (partner) => {
+    if (!partner.subaccountDeletedAt) return partner;
+
+    const expired = (Date.now() - partner.subaccountDeletedAt.getTime()) > THIRTY_DAYS_MS;
+    if (!expired) return partner;
+
+    partner.bankDetails = { bankCode: null, accountNumber: null, accountName: null };
+    partner.subaccountDeletedAt = null;
+    await partner.save();
+    return partner;
+};
+
+// Batch version for list endpoints — runs the single-partner check across
+// an array without blocking the response on partners that don't need it.
+const clearExpiredSubaccountInfoBatch = async (partners) => {
+    await Promise.all(
+        partners.map(p => {
+            if (!p.subaccountDeletedAt) return null;
+            const expired = (Date.now() - p.subaccountDeletedAt.getTime()) > THIRTY_DAYS_MS;
+            if (!expired) return null;
+            p.bankDetails = { bankCode: null, accountNumber: null, accountName: null };
+            p.subaccountDeletedAt = null;
+            return p.save();
+        })
+    );
+    return partners;
+};
+
 // ── HELPER: NOTIFY ADMIN OF NEW PAYOUT RECIPIENT (self-serve creation) ──
 // Uses the same Brevo HTTP API path as OTP/password-reset emails.
 const notifyAdminOfSubaccount = async (partner, adminEmail) => {
@@ -112,10 +147,11 @@ const signUpForAffiliation = async (req, res) => {
 // ── SELF-SERVE: GET MY REFERRAL INFO + STATS ──
 const getMyReferralInfo = async (req, res) => {
     try {
-        const partner = await ReferralPartner.findOne({ linkedUserId: req.user._id });
+        let partner = await ReferralPartner.findOne({ linkedUserId: req.user._id });
         if (!partner) {
             return res.status(404).json({ message: "You are not registered as a referral partner yet." });
         }
+        partner = await clearExpiredSubaccountInfo(partner);
 
         const referredCount = await User.countDocuments({ referralPartnerId: partner._id });
 
@@ -284,6 +320,8 @@ const getAllPartners = async (req, res) => {
             .populate("linkedUserId", "firstName otherName surname email")
             .populate("onboardedBy", "firstName surname email")
             .sort({ createdAt: -1 });
+
+        await clearExpiredSubaccountInfoBatch(partners);
 
         res.status(200).json({ partners });
     } catch (error) {
@@ -472,6 +510,27 @@ const updateReferralSettings = async (req, res) => {
     }
 };
 
+// ── LIST NIGERIAN BANKS (for the payout-account bank-code dropdown) ──
+// Available to any logged-in user, not admin-only — this is what the
+// self-serve setupPayoutAccount form will need to populate its dropdown.
+const getBankList = async (req, res) => {
+    try {
+        const response = await paystackRequest("GET", "/bank?country=nigeria&currency=NGN");
+
+        if (!response.status) {
+            return res.status(400).json({ message: response.message || "Failed to fetch bank list." });
+        }
+
+        const banks = response.data.map(b => ({ name: b.name, code: b.code }));
+
+        res.status(200).json({ banks });
+
+    } catch (error) {
+        console.error("Get bank list error:", error);
+        res.status(500).json({ message: "Failed to get bank list." });
+    }
+};
+
 // ── ADMIN: LIST ALL SUBACCOUNTS/RECIPIENTS (for pruning) ──
 const getAllSubaccounts = async (req, res) => {
     try {
@@ -479,6 +538,8 @@ const getAllSubaccounts = async (req, res) => {
             .populate("linkedUserId", "firstName surname email")
             .select("name referralCode tier paystackRecipientCode bankDetails subaccountDeletedAt")
             .sort({ createdAt: -1 });
+
+        await clearExpiredSubaccountInfoBatch(partners);
 
         res.status(200).json({ partners });
     } catch (error) {
@@ -517,6 +578,7 @@ module.exports = {
     signUpForAffiliation,
     getMyReferralInfo,
     setupPayoutAccount,
+    getBankList,
     onboardPartner,
     getAllPartners,
     editPartner,
