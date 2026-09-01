@@ -71,10 +71,23 @@ const paymentSchema = new mongoose.Schema(
         },
         referralPayoutStatus: {
             type: String,
-            enum: ["not_applicable", "paid_to_partner", "pending_subaccount", "redirected_asodem", "transfer_failed"],
+            // "claimed_by_asodem" is distinct from "redirected_asodem" —
+            // the latter means the partner was inactive at payment time,
+            // the former means the payout sat pending too long (60+ days)
+            // with no payout account ever set up and was manually claimed
+            // by a superadmin. Kept separate for transparency/audit trail.
+            enum: ["not_applicable", "paid_to_partner", "pending_subaccount", "redirected_asodem", "transfer_failed", "claimed_by_asodem"],
             default: "not_applicable"
+        },
+        referralPayoutClaimedAt: {
+            type: Date,
+            default: null
+        },
+        referralPayoutClaimedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
         }
-    },
     { timestamps: true }
 );
 
