@@ -249,6 +249,57 @@ const notifyAdminOfAccountChange = async (partner, adminEmail, isEdit) => {
     }
 };
 
+// ── HELPER: RESOLVE PENDING PAYOUTS FOR A PARTNER ──
+// Called the moment a partner successfully sets up (or re-sets-up) their
+// payout recipient. Finds every Payment that was snapshotted while this
+// partner had no recipient code yet (referralPayoutStatus: "pending_subaccount")
+// and fires the transfer now that one exists. Payments already claimed by
+// ASODEM (referralPayoutStatus: "claimed_by_asodem") are NOT touched here —
+// that money has already been formally resolved and moved on, by design.
+const resolvePendingPayoutsForPartner = async (partner) => {
+    try {
+        const pendingPayments = await Payment.find({
+            referralPartnerId: partner._id,
+            referralPayoutStatus: "pending_subaccount"
+        });
+
+        if (pendingPayments.length === 0) return { resolvedCount: 0, failedCount: 0 };
+
+        let resolvedCount = 0;
+        let failedCount = 0;
+
+        for (const payment of pendingPayments) {
+            try {
+                const transferResponse = await paystackRequest("POST", "/transfer", {
+                    source: "balance",
+                    amount: payment.referralPayoutAmount,
+                    recipient: partner.paystackRecipientCode,
+                    reason: `ASODEM referral payout (resolved pending) — ${payment.reference}`
+                });
+
+                if (transferResponse.status) {
+                    payment.referralPayoutStatus = "paid_to_partner";
+                    resolvedCount++;
+                } else {
+                    payment.referralPayoutStatus = "transfer_failed";
+                    failedCount++;
+                }
+            } catch (err) {
+                console.error("Resolve-pending transfer error:", err);
+                payment.referralPayoutStatus = "transfer_failed";
+                failedCount++;
+            }
+            await payment.save();
+        }
+
+        return { resolvedCount, failedCount };
+
+    } catch (error) {
+        console.error("Resolve pending payouts error:", error);
+        return { resolvedCount: 0, failedCount: 0 };
+    }
+};
+
 // ── SELF-SERVE: SUBMIT BANK DETAILS → CREATE/UPDATE PAYSTACK RECIPIENT ──
 // Handles both the first-ever setup (no cooldown) and later edits (14-day
 // cooldown, unless admin has granted a one-time override — consumed on use).
@@ -320,17 +371,33 @@ const setupPayoutAccount = async (req, res) => {
             console.warn("ADMIN_NOTIFICATION_EMAIL not set — skipping admin notification email.");
         }
 
+        // Resolve any payouts that were snapshotted while this partner had
+        // no payout account yet. Payments already claimed by ASODEM
+        // (60+ days pending, manually claimed by a superadmin) are excluded
+        // by design — see resolvePendingPayoutsForPartner.
+        const { resolvedCount, failedCount } = await resolvePendingPayoutsForPartner(partner);
+
         await logActivity({
             user: req.user._id, email: req.user.email,
             event: isEdit ? "referral_payout_account_edited" : "referral_payout_account_set",
-            metadata: { referralPartnerId: partner._id.toString(), accountName }, req
+            metadata: { referralPartnerId: partner._id.toString(), accountName, resolvedPendingPayouts: resolvedCount, failedPendingPayouts: failedCount }, req
         });
 
+        let message = isEdit
+            ? "Payout account updated successfully."
+            : "Payout account set up successfully.";
+        if (resolvedCount > 0) {
+            message += ` ${resolvedCount} pending payout${resolvedCount !== 1 ? "s" : ""} ${resolvedCount !== 1 ? "have" : "has"} now been processed.`;
+        }
+        if (failedCount > 0) {
+            message += ` ${failedCount} pending payout${failedCount !== 1 ? "s" : ""} failed to transfer and will need admin attention.`;
+        }
+
         res.status(200).json({
-            message: isEdit
-                ? "Payout account updated successfully."
-                : "Payout account set up successfully. Any pending payouts will now be processed.",
-            accountName
+            message,
+            accountName,
+            resolvedCount,
+            failedCount
         });
 
     } catch (error) {
@@ -731,6 +798,91 @@ const getBankList = async (req, res) => {
     } catch (error) {
         console.error("Get bank list error:", error);
         res.status(500).json({ message: "Failed to get bank list." });
+    }
+};
+
+// ── ADMIN: LIST ALL PENDING-SUBACCOUNT PAYOUTS (across all partners) ──
+// Surfaces how long each has been waiting, so a superadmin can judge
+// the 60-day threshold before claiming. The 60-day rule is also enforced
+// server-side in claimPendingPayout below — this listing is informational,
+// not the enforcement point.
+const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
+
+const getPendingPayouts = async (req, res) => {
+    try {
+        const payments = await Payment.find({ referralPayoutStatus: "pending_subaccount" })
+            .populate("referralPartnerId", "name referralCode tier")
+            .populate("user", "firstName otherName surname email")
+            .sort({ paidAt: 1 }); // oldest first — most eligible to claim shown first
+
+        const withAge = payments.map(p => {
+            const daysPending = p.paidAt ? Math.floor((Date.now() - p.paidAt.getTime()) / (24 * 60 * 60 * 1000)) : null;
+            return {
+                _id: p._id,
+                reference: p.reference,
+                amount: p.amount,
+                referralPayoutAmount: p.referralPayoutAmount,
+                paidAt: p.paidAt,
+                daysPending,
+                claimEligible: daysPending !== null && daysPending >= 60,
+                partner: p.referralPartnerId,
+                user: p.user
+            };
+        });
+
+        res.status(200).json({ payouts: withAge });
+
+    } catch (error) {
+        console.error("Get pending payouts error:", error);
+        res.status(500).json({ message: "Failed to get pending payouts." });
+    }
+};
+
+// ── ADMIN: MANUALLY CLAIM A PENDING PAYOUT BACK TO ASODEM ──
+// Only allowed once a payment has been sitting at "pending_subaccount"
+// for 60+ days — enforced here server-side, not just left to the admin's
+// own tracking, so this can't be triggered early even by mistake. This is
+// a deliberate resolution between ASODEM and the partner, kept transparent
+// via a distinct status and a claimedBy/claimedAt audit trail — it is NOT
+// the same as the inactive-partner redirect (see referralPayoutStatus notes
+// on the Payment model).
+const claimPendingPayout = async (req, res) => {
+    try {
+        const payment = await Payment.findById(req.params.id);
+        if (!payment) return res.status(404).json({ message: "Payment not found." });
+
+        if (payment.referralPayoutStatus !== "pending_subaccount") {
+            return res.status(400).json({ message: "This payout is not in a pending-subaccount state and cannot be claimed." });
+        }
+
+        if (!payment.paidAt) {
+            return res.status(400).json({ message: "This payment has no confirmed payment date and cannot be claimed." });
+        }
+
+        const daysPending = Math.floor((Date.now() - payment.paidAt.getTime()) / (24 * 60 * 60 * 1000));
+        if (daysPending < 60) {
+            return res.status(403).json({
+                message: `This payout has only been pending for ${daysPending} day${daysPending !== 1 ? "s" : ""}. It can only be claimed after 60 days.`,
+                daysPending
+            });
+        }
+
+        payment.referralPayoutStatus = "claimed_by_asodem";
+        payment.referralPayoutRecipient = "asodem";
+        payment.referralPayoutClaimedAt = new Date();
+        payment.referralPayoutClaimedBy = req.user._id;
+        await payment.save();
+
+        await logActivity({
+            user: req.user._id, email: req.user.email, event: "referral_pending_payout_claimed",
+            metadata: { paymentId: payment._id.toString(), referralPartnerId: payment.referralPartnerId?.toString(), amount: payment.referralPayoutAmount, daysPending }, req
+        });
+
+        res.status(200).json({ message: "Payout claimed successfully. This amount will no longer be paid out even if the partner later sets up their account." });
+
+    } catch (error) {
+        console.error("Claim pending payout error:", error);
+        res.status(500).json({ message: "Failed to claim payout." });
     }
 };
 
