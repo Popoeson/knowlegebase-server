@@ -123,7 +123,7 @@ router.get("/certificates", getAllCertificates);
 router.patch("/certificates/:id/revoke", superAdminOnly, revokeCertificate);
 
 // ── REFERRAL PARTNERS ──
-router.post("/referral-partners", superAdminOnly, onboardPartner);
+router.post("/referral-partners", onboardPartner);
 router.get("/referral-partners", getAllPartners);
 router.put("/referral-partners/:id", superAdminOnly, editPartner);
 router.patch("/referral-partners/:id/toggle", superAdminOnly, togglePartnerStatus);
@@ -131,10 +131,11 @@ router.patch("/referral-partners/:id/grant-override", superAdminOnly, grantPayou
 router.get("/referral-partners/:id/settlement", getPartnerSettlement);
 router.patch("/users/:id/referral-partner", superAdminOnly, reassignStudentPartner);
 
-// ── REFERRAL SETTINGS (global individual flat amount) ──
-router.get("/referral-settings", getReferralSettings);
+// ── REFERRAL SETTINGS (global individual flat amount) — superadmin only,
+// end to end. Regular admins should never see this value, not just be
+// blocked from editing it.
+router.get("/referral-settings", superAdminOnly, getReferralSettings);
 router.put("/referral-settings", superAdminOnly, updateReferralSettings);
-
 // ── REFERRAL SUBACCOUNTS (pruning) ──
 router.get("/referral-subaccounts", getAllSubaccounts);
 router.delete("/referral-subaccounts/:id", superAdminOnly, deleteSubaccount);
