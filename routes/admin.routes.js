@@ -60,7 +60,9 @@ const {
     getReferralSettings,
     updateReferralSettings,
     getAllSubaccounts,
-    deleteSubaccount
+    deleteSubaccount,
+    getPendingPayouts,
+    claimPendingPayout
 } = require("../controllers/referral.controller");
 
 const { adminActionLimiter } = require("../middleware/rateLimit.middleware");
@@ -136,8 +138,13 @@ router.patch("/users/:id/referral-partner", superAdminOnly, reassignStudentPartn
 // blocked from editing it.
 router.get("/referral-settings", superAdminOnly, getReferralSettings);
 router.put("/referral-settings", superAdminOnly, updateReferralSettings);
+
 // ── REFERRAL SUBACCOUNTS (pruning) ──
 router.get("/referral-subaccounts", getAllSubaccounts);
 router.delete("/referral-subaccounts/:id", superAdminOnly, deleteSubaccount);
+
+// ── REFERRAL PENDING PAYOUTS (60-day manual claim) ──
+router.get("/referral-pending-payouts", superAdminOnly, getPendingPayouts);
+router.patch("/referral-pending-payouts/:id/claim", superAdminOnly, claimPendingPayout);
 
 module.exports = router;
