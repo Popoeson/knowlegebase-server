@@ -495,14 +495,34 @@ const editPartner = async (req, res) => {
         const partner = await ReferralPartner.findById(req.params.id);
         if (!partner) return res.status(404).json({ message: "Partner not found." });
 
-        const { name, referralCode, registrationFlatAmount, examFlatAmount, tag } = req.body;
+        const { name, referralCode, tier, tag, registrationFlatAmount, examFlatAmount } = req.body;
 
         if (name) partner.name = name;
         if (referralCode) partner.referralCode = referralCode.trim().toUpperCase();
+
+        // Tier switch — allowed both directions. Switching to lifetime
+        // requires a tag; switching to one-time clears the lifetime-only
+        // fields so stale amounts don't linger on a record that no longer
+        // uses them.
+        if (tier && tier !== partner.tier) {
+            if (!["one-time", "lifetime"].includes(tier)) {
+                return res.status(400).json({ message: "tier must be 'one-time' or 'lifetime'." });
+            }
+            if (tier === "lifetime" && !tag) {
+                return res.status(400).json({ message: "A tag is required when switching a partner to lifetime tier." });
+            }
+            partner.tier = tier;
+            if (tier === "one-time") {
+                partner.tag = null;
+                partner.registrationFlatAmount = null;
+                partner.examFlatAmount = null;
+            }
+        }
+
         if (partner.tier === "lifetime") {
+            if (tag) partner.tag = tag;
             if (registrationFlatAmount !== undefined) partner.registrationFlatAmount = registrationFlatAmount;
             if (examFlatAmount !== undefined) partner.examFlatAmount = examFlatAmount;
-            if (tag) partner.tag = tag;
         }
 
         await partner.save();
