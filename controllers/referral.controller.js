@@ -947,5 +947,7 @@ module.exports = {
     getReferralSettings,
     updateReferralSettings,
     getAllSubaccounts,
-    deleteSubaccount
+    deleteSubaccount,
+    getPendingPayouts,
+    claimPendingPayout
 };
