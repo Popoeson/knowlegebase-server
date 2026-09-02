@@ -188,7 +188,9 @@ const getMyReferralInfo = async (req, res) => {
                 tier: partner.tier,
                 status: partner.status,
                 hasSubaccount: !!partner.paystackRecipientCode,
-                payoutAccountName: partner.bankDetails?.accountName || null
+                payoutBankName: partner.bankDetails?.bankName || null,
+                payoutAccountName: partner.bankDetails?.accountName || null,
+                payoutAccountNumber: partner.bankDetails?.accountNumber || null
             },
             referredStudentCount: referredCount,
             payoutBreakdown: payoutAgg,
@@ -240,8 +242,10 @@ const notifyAdminOfAccountChange = async (partner, adminEmail, isEdit) => {
             `Referral payout account ${isEdit ? "changed" : "created"} — ${partner.name}`,
             `<p>Partner <strong>${partner.name}</strong> (${partner.tier} tier, code ${partner.referralCode}) just
              ${isEdit ? "changed" : "set up"} their payout account.</p>
-             <p>Recipient code: ${partner.paystackRecipientCode}<br/>
-             Bank: ${partner.bankDetails?.accountName || "n/a"} — ${partner.bankDetails?.accountNumber || "n/a"}</p>
+             <p>Bank Name: ${partner.bankDetails?.bankName || "n/a"}<br/>
+             Account Name: ${partner.bankDetails?.accountName || "n/a"}<br/>
+             Account Number: ${partner.bankDetails?.accountNumber || "n/a"}<br/>
+             Recipient Code: ${partner.paystackRecipientCode}</p>
              <p>Please verify this on the Paystack dashboard.</p>`
         );
     } catch (err) {
