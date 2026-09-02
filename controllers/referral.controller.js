@@ -305,7 +305,7 @@ const resolvePendingPayoutsForPartner = async (partner) => {
 // cooldown, unless admin has granted a one-time override — consumed on use).
 const setupPayoutAccount = async (req, res) => {
     try {
-        const { bankCode, accountNumber } = req.body;
+        const { bankCode, bankName, accountNumber } = req.body;
 
         if (!bankCode || !accountNumber) {
             return res.status(400).json({ message: "Bank code and account number are required." });
@@ -356,8 +356,9 @@ const setupPayoutAccount = async (req, res) => {
             return res.status(400).json({ message: recipientResponse.message || "Failed to create payout recipient." });
         }
 
-        partner.bankDetails = { bankCode, accountNumber, accountName };
+partner.bankDetails = { bankCode, bankName: bankName || null, accountNumber, accountName };
         partner.paystackRecipientCode = recipientResponse.data.recipient_code;
+
         partner.subaccountDeletedAt = null;
         partner.lastPayoutAccountChangeAt = new Date();
         if (isEdit && partner.payoutChangeOverrideGranted) {
