@@ -56,9 +56,11 @@ const referralPartnerSchema = new mongoose.Schema(
         },
         bankDetails: {
             bankCode: { type: String, default: null },
+            bankName: { type: String, default: null },
             accountNumber: { type: String, default: null },
             accountName: { type: String, default: null }
         },
+    
         // Lazy 30-day clear pattern (same approach as utils/cache.js TTL) —
         // checked and cleared on read in the controller, no cron job needed.
         subaccountDeletedAt: {
