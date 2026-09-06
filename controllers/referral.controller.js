@@ -197,17 +197,10 @@ const getMyReferralInfo = async (req, res) => {
             referredStudents
         });
 
-    } } catch (error) {
-            if (error.status === 404) {
-                // Not a partner yet — show signup CTA
-                loadingState.classList.add("hidden");
-                signupState.classList.remove("hidden");
-                return;
-            }
-            console.error("Load partner info error:", error);
-            loadingState.classList.add("hidden");
-            Utils.toast("Failed to load referral info", "error");
-        }
+    } catch (error) {
+        console.error("Get my referral info error:", error);
+        res.status(500).json({ message: "Failed to get referral info." });
+    }
 };
 
 // ── SELF-SERVE: VERIFY BANK ACCOUNT (preview only, no save) ──
