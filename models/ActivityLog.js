@@ -33,8 +33,25 @@ const activityLogSchema = new mongoose.Schema(
                 "exam_timed_out",
                 "certificate_generated",
                 "certificate_payment_initialized",
-                "certificate_payment_verified"
+                "certificate_payment_verified",
+                // Referral system events (added during referral program build)
+                "referral_attribution_set",
+                "referral_signup",
+                "referral_payout_account_set",
+                "referral_payout_account_edited",
+                "referral_opted_out",
+                "referral_opted_back_in",
+                "referral_partner_onboarded",
+                "referral_partner_edited",
+                "referral_partner_activated",
+                "referral_partner_deactivated",
+                "referral_payout_override_granted",
+                "referral_attribution_manual_override",
+                "referral_settings_updated",
+                "referral_subaccount_deleted",
+                "referral_pending_payout_claimed"
             ]
+            
         },
         // Free-form context specific to each event type — e.g. courseId/
         // courseTitle for exam events, amount/type for payment events.
